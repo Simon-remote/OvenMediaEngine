@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 
 <Server version="7">
-	<Name>OvenMediaEngine</Name>
+	<Name>Simon_OME</Name>
 	<!-- Host type (origin/edge) -->
 	<Type>origin</Type>
 	<!-- Specify IP address to bind (* means all IPs) -->
@@ -13,6 +13,9 @@
 			<RTMP>
 				<Port>${env:OME_RTMP_PROV_PORT:1935}</Port>
 			</RTMP>
+			<RTSP>
+				<Port>${env:OME_RTSP_PULL_PORT:554}</Port>  <!--added by RTU -->
+			</RTSP>
 			<MPEGTS>
 				<!--
 					Listen on port 4000,4001,4004,4005
@@ -77,11 +80,40 @@
 				</TLS>
 				-->
 			</Domain>
-
+			<Origins>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_1}</Location> <!--/app_name/rtsp_stream_name-->
+					  <Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_1_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_2}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_2_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_3}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_3_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_4}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_4_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+			</Origins>
 			<!-- Settings for applications -->
 			<Applications>
 				<Application>
-					<Name>app</Name>
+					<Name>${env:APPLICATION_NAME}</Name>
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
                     <Encodes>
