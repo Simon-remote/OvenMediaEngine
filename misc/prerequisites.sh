@@ -185,7 +185,7 @@ install_ffmpeg()
     --enable-encoder=libvpx_vp8,libvpx_vp9,libopus,libfdk_aac,libx264,libx265 \
     --enable-decoder=aac,aac_latm,aac_fixed,h264,hevc \
     --enable-parser=aac,aac_latm,aac_fixed,h264,hevc \
-    --enable-network --enable-protocol=tcp --enable-protocol=udp --enable-protocol=rtp --enable-demuxer=rtsp \
+    --enable-network --enable-protocol=tcp --enable-protocol=udp --enable-protocol=rtp,file,rtmp --enable-demuxer=rtsp --enable-muxer=mp4,webm,mpegts,flv,mpjpeg \
     --enable-filter=asetnsamples,aresample,aformat,channelmap,channelsplit,scale,transpose,fps,settb,asettb && \
     make && \
     sudo make install && \
@@ -315,6 +315,7 @@ else
     echo "This program [$0] does not support your operating system [${OSNAME}]"
     echo "Please refer to manual installation page"
 fi
+
 
 install_nasm
 install_openssl
