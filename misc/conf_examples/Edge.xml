@@ -17,12 +17,12 @@
 		</Providers>
 
 		<Publishers>
-	        <HLS>
+            <HLS>
 				<Port>${env:OME_HLS_STREAM_PORT:8090}</Port>
 				<!-- If you want to use TLS, specify the TLS port -->
 				<!-- <TLSPort>8443</TLSPort> -->
 			</HLS>
-	        <DASH>
+            <DASH>
 				<Port>${env:OME_DASH_STREAM_PORT:8090}</Port>
 				<!-- If you want to use TLS, specify the TLS port -->
 				<!-- <TLSPort>8443</TLSPort> -->
@@ -58,11 +58,11 @@
 				<Names>
 					<!--
 						Domain names
-
 						<Name>stream1.airensoft.com</Name>
 						<Name>stream2.airensoft.com</Name>
 						<Name>*.sub.airensoft.com</Name>
 					-->
+					<Name>*</Name>
 				</Names>
 				<!--
 				<TLS>
@@ -74,38 +74,58 @@
 			</Domain>
 
 			<SignedURL>
-	            <CryptoKey>${env:SIGNED_URL_CRYPTO_KEY:}</CryptoKey>
-	            <QueryStringKey>${env:SIGNED_URL_QUERY_KEY:authtoken}</QueryStringKey>
-	  </SignedURL>
+                <CryptoKey>${env:SIGNED_URL_CRYPTO_KEY:}</CryptoKey>
+                <QueryStringKey>${env:SIGNED_URL_QUERY_KEY:authtoken}</QueryStringKey>
+            </SignedURL>
 
 			<!-- Settings for ProxyPass (It can specify origin for each path) -->
 			<Origins>
-				<Origin>
-					<Location>/deep/</Location>
+                <!--
+                <Origin>
+					<Location>/app/stream</Location>
 					<Pass>
 						<Scheme>ovt</Scheme>
 						<Urls>
-							<Url>172.26.103.48:9000/deep/</Url>
+							<Url>origin.com:9000/app/stream_720p</Url>
 						</Urls>
 					</Pass>
 				</Origin>
 				<Origin>
-					<Location>/volans</Location>
+					<Location>/app/</Location>
 					<Pass>
 						<Scheme>ovt</Scheme>
 						<Urls>
-							<Url>172.26.5.170:9000/volans/</Url>
+							<Url>origin.com:9000/app/</Url>
 						</Urls>
 					</Pass>
 				</Origin>
+				-->
 				<Origin>
-					<Location>/loeve/</Location>
-					<Pass>
-						<Scheme>ovt</Scheme>
-						<Urls>
-							<Url>172.26.125.128:9000/loeve/</Url>
-						</Urls>
-					</Pass>
+				  <Location>/deep/</Location>
+				  <Pass>
+				    <Scheme>ovt</Scheme>
+				    <Urls>
+				      <Url>172.26.103.48:9000/deep/</Url>
+				    </Urls>
+				  </Pass>
+				</Origin>
+				<Origin>
+				  <Location>/volans</Location>
+				  <Pass>
+				    <Scheme>ovt</Scheme>
+				    <Urls>
+				      <Url>172.26.5.170:9000/volans/</Url>
+				    </Urls>
+				  </Pass>
+				</Origin>
+				<Origin>
+				  <Location>/loeve/</Location>
+				  <Pass>
+				    <Scheme>ovt</Scheme>
+				    <Urls>
+				      <Url>172.26.125.128:9000/loeve/</Url>
+				    </Urls>
+				  </Pass>
 				</Origin>
 			</Origins>
 		</VirtualHost>
