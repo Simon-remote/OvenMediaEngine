@@ -18,24 +18,9 @@ bool H264AvccToAnnexB::GetExtradata(const common::PacketType type, const std::sh
 			logte("Could not parse sequence header"); 
 			return false;
 		}
-
-		// Structure of Extradata
-		//  START_CODE + SPS + START_CODE + PPS ... 
-		auto tmp = std::make_shared<ov::Data>();
-
-		for(int i=0 ; i<config.NumOfSPS() ; i++)
-		{
-			tmp->Append(START_CODE, sizeof(START_CODE));    
-			tmp->Append(config.GetSPS(i));
-		}
-		for(int i=0 ; i<config.NumOfPPS() ; i++)
-		{
-			tmp->Append(START_CODE, sizeof(START_CODE));    
-			tmp->Append(config.GetPPS(i));
-		}
-
-		extradata.reserve(tmp->GetLength());
-		std::copy(tmp->GetDataAs<uint8_t>(), tmp->GetDataAs<uint8_t>()+tmp->GetLength(), std::back_inserter(extradata));
+		logtd("%s", config.GetInfoString().CStr());
+		// std::vector<uint8_t> serialzed;
+		config.Serialize(extradata);
 
 		return true;   
 	}
@@ -57,7 +42,6 @@ bool H264AvccToAnnexB::Convert(common::PacketType type, const std::shared_ptr<ov
 			logte("Could not parse sequence header"); 
 			return false;
 		}
-		logtd("%s", config.GetInfoString().CStr());
 
 		for(int i=0 ; i<config.NumOfSPS() ; i++)
 		{
@@ -75,12 +59,7 @@ bool H264AvccToAnnexB::Convert(common::PacketType type, const std::shared_ptr<ov
 	{
 		ov::ByteStream read_stream(data.get());
 
-		// Append SPS/PPS Nalunit
-		if(extradata.size() > 0)
-		{
-			annexb_data->Append(extradata.data(), (size_t)extradata.size());
-		}
-
+		bool has_idr_slice = false;
 		while(read_stream.Remained() > 0)
 		{
 			if(read_stream.IsRemained(4) == false)
@@ -101,9 +80,48 @@ bool H264AvccToAnnexB::Convert(common::PacketType type, const std::shared_ptr<ov
 			[[maybe_unused]] auto skipped = read_stream.Skip(nal_length);
 			OV_ASSERT2(skipped == nal_length);
 
+			H264NalUnitHeader header;
+			if(H264Parser::ParseNalUnitHeader(nal_data->GetDataAs<uint8_t>(), H264_NAL_UNIT_HEADER_SIZE, header) == true)
+			{
+				if(header.GetNalUnitType() == H264NalUnitType::IdrSlice)
+				{
+					// logtd("IdrSlice");
+					has_idr_slice = true;
+				}	
+			}
+
 			annexb_data->Append(START_CODE, sizeof(START_CODE));
 			annexb_data->Append(nal_data);
-		}               
+		}   
+
+		// Append SPS/PPS NalU before IdrSlice NalU. not every packet.
+		if(extradata.size() > 0 && has_idr_slice == true)
+		{
+			AVCDecoderConfigurationRecord config;
+			if(!AVCDecoderConfigurationRecord::Parse(extradata.data(), extradata.size(), config))
+			{
+				logte("Could not parse sequence header"); 
+				return false;
+			}			
+
+			auto sps_pps = std::make_shared<ov::Data>();
+
+			for(int i=0 ; i<config.NumOfSPS() ; i++)
+			{
+				sps_pps->Append(START_CODE, sizeof(START_CODE));
+				sps_pps->Append(config.GetSPS(i));
+			}
+			
+			for(int i=0 ; i<config.NumOfPPS() ; i++)
+			{
+				sps_pps->Append(START_CODE, sizeof(START_CODE));
+				sps_pps->Append(config.GetPPS(i));
+			}	
+
+			annexb_data->Insert(sps_pps->GetDataAs<uint8_t>(), 0, sps_pps->GetLength());
+			// logtd("Append sps/pps nal unit");
+		}
+		            
 	}
 
 	data->Clear();
