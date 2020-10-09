@@ -67,6 +67,7 @@ std::shared_ptr<MediaFrame> OvenCodecImplAvcodecDecAVC::RecvBuffer(TranscodeResu
 		decoded_frame->SetHeight(_frame->height);
 		decoded_frame->SetFormat(_frame->format);
 		decoded_frame->SetPts((_frame->pts == AV_NOPTS_VALUE) ? -1LL : _frame->pts);
+		
 		// Calculate duration using framerate in timebase
 		int den = _input_context->GetTimeBase().GetDen();
 		int64_t duration = (den == 0) ? 0LL : (float)den / _input_context->GetFrameRate();
@@ -147,9 +148,19 @@ std::shared_ptr<MediaFrame> OvenCodecImplAvcodecDecAVC::RecvBuffer(TranscodeResu
 					return nullptr;
 
 				}
+				else if (ret == AVERROR_INVALIDDATA)
+				{
+					// If only SPS/PPS Nalunit is entered in the decoder, an invalid data error occurs.
+					// There is no particular problem.
+					logtd("Invalid data found when processing input (%d)", ret);
+					*result = TranscodeResult::DataError;
+					return nullptr;
+				}
 				else if (ret < 0)
 				{
-					logte("An error occurred while sending a packet for decoding: Unhandled error (%d)", ret);
+					char err_msg[1024];
+					 av_strerror(ret, err_msg, sizeof(err_msg));
+					logte("An error occurred while sending a packet for decoding: Unhandled error (%d:%s) ", ret, err_msg);
 					*result = TranscodeResult::DataError;
 					return nullptr;
 				}

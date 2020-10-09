@@ -81,20 +81,20 @@ private:
 		std::shared_ptr<MediaTrack> &media_track, 
 		std::shared_ptr<MediaPacket> &media_packet);
 
-
 	// Parse fragment header, flags
-	bool ParseAdditionalData(
+	bool UpdateFlagmentHeaders(
 		std::shared_ptr<MediaTrack> &media_track, 
-		std::shared_ptr<MediaPacket> &media_packet);
+		std::shared_ptr<MediaPacket> &media_packet, bool force = false);
 
-	// Convert PTS/DTS to default timebase
-	//  Each provider has a different timebase.
-	//  This function converts timebase, which is commonly used by codecs, and also converts PTS.
-	bool ConvertToDefaultTimestamp(
+	// Periodically insert sps/pps so that the player's decoding starts quickly.
+	bool UpdateDecoderParameterSets(
 		std::shared_ptr<MediaTrack> &media_track,
 		std::shared_ptr<MediaPacket> &media_packet);
 
-	std::map<MediaTrackId, common::Timebase> _incoming_tiembase;
+
+	bool UpdateKeyFlags(
+		std::shared_ptr<MediaTrack> &media_track, 
+		std::shared_ptr<MediaPacket> &media_packet);
 
 	void UpdateStatistics(std::shared_ptr<MediaTrack> &media_track,
 		std::shared_ptr<MediaPacket> &media_packet);
@@ -127,6 +127,8 @@ private:
 	// Average Pts Incresement
 	std::map<MediaTrackId, int64_t> _pts_avg_inc;
 
+	// Timebase of incoming packets
+	std::map<MediaTrackId, common::Timebase> _incoming_tiembase;
 
 	// Statistics
 	// <TrackId, Values>

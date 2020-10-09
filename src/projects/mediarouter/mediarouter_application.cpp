@@ -12,6 +12,8 @@
 
 #define OV_LOG_TAG "MediaRouter.App"
 
+#define ASYNC_CSTREAM_ENABLE 0
+
 using namespace common;
 
 std::shared_ptr<MediaRouteApplication> MediaRouteApplication::Create(const info::Application &application_info)
@@ -222,15 +224,18 @@ bool MediaRouteApplication::OnCreateStream(
 	// - from Transcoder : Notify to Observer(Publisher)
 	// - from Relay : Notify to Observer(Publisher)
 
+#if ASYNC_CSTREAM_ENABLE
 	if(connector == MediaRouteApplicationConnector::ConnectorType::Provider)
 	{
 		return true;
 	}
+#endif
 
 	if(!NotifyCreateStream(stream_info, connector))
 	{
 		return false;
 	}
+
 
 	return true;
 }
@@ -326,6 +331,7 @@ bool MediaRouteApplication::NotifyCreateStream(
 			} break;
 		}
 	}
+
 
 	return true;
 }
@@ -485,6 +491,7 @@ bool MediaRouteApplication::OnReceiveBuffer(
 
 	// When the incoming stream is finished parsing track information, 
 	// Notify the Observer that the stream is created.
+#if ASYNC_CSTREAM_ENABLE
 	if(stream->GetInoutType() == MRStreamInoutType::Incoming)
 	{
 		if(stream->IsCreatedSteam() == false && stream->IsParseTrackAll() == true)
@@ -494,7 +501,7 @@ bool MediaRouteApplication::OnReceiveBuffer(
 			stream->SetCreatedSteam(true);
 		}
 	}
-	
+#endif	
 	_indicator.Enqueue(std::make_shared<BufferIndicator>(indicator, stream_info->GetId()));
 
 	return true;
