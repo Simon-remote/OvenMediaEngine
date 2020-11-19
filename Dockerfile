@@ -151,6 +151,11 @@ RUN \
         make install_include install_lib && \
         rm -rf ${DIR}
 
+## Create Letsencrypt cert home dir
+RUN \
+        DIR=/tmp/letsencrypt && \
+        mkdir -p ${DIR} && \
+
 ## Build OvenMediaEngine
 RUN \
         DIR=/tmp/ome && \
