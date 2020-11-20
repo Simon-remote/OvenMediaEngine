@@ -60,9 +60,9 @@
 					<Name>*</Name>-->
 				</Names>
 				<TLS>
-					<CertPath>/letsencrypt/cert.crt</CertPath>
-					<KeyPath>/letsencrypt/privkey.key</KeyPath>
-					<ChainCertPath>/letsencrypt/fullchain.crt</ChainCertPath>
+					<CertPath>/opt/ovenmediaengine/bin/letsencrypt/cert.crt</CertPath>
+					<KeyPath>/opt/ovenmediaengine/bin/letsencrypt/privkey.key</KeyPath>
+					<ChainCertPath>/opt/ovenmediaengine/bin/letsencrypt/fullchain.crt</ChainCertPath>
 				</TLS>
 
 			</Domain>
