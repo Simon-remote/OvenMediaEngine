@@ -60,9 +60,9 @@
 					<Name>*</Name>-->
 				</Names>
 				<TLS>
-					<CertPath>/tmp/letsencrypt/cert.crt</CertPath>
-					<KeyPath>/tmp/letsencrypt/privkey.key</KeyPath>
-					<ChainCertPath>/tmp/letsencrypt/fullchain.crt</ChainCertPath>
+					<CertPath>/letsencrypt/cert.crt</CertPath>
+					<KeyPath>/letsencrypt/privkey.key</KeyPath>
+					<ChainCertPath>/letsencrypt/fullchain.crt</ChainCertPath>
 				</TLS>
 
 			</Domain>
