@@ -47,9 +47,9 @@ namespace ocst
 
 				vhost->name = host_info.GetName();
 
-				logtd("    - Processing for domains: %d items", host_info.GetDomain().GetNameList().size());
+				logtd("    - Processing for hosts: %d items", host_info.GetHost().GetNameList().size());
 
-				for (auto &domain_name : host_info.GetDomain().GetNameList())
+				for (auto &domain_name : host_info.GetHost().GetNameList())
 				{
 					logtd("      - %s: New", domain_name.GetName().CStr());
 					vhost->host_list.emplace_back(domain_name.GetName());
@@ -78,11 +78,11 @@ namespace ocst
 			auto &vhost = previous_vhost_item->second;
 
 			logtd("    - Processing for hosts");
-			auto new_state_for_domain = ProcessHostList(&(vhost->host_list), host_info.GetDomain());
+			auto new_state_for_host = ProcessHostList(&(vhost->host_list), host_info.GetHost());
 			logtd("    - Processing for origins");
 			auto new_state_for_origin = ProcessOriginList(&(vhost->origin_list), host_info.GetOrigins());
 
-			if ((new_state_for_domain == ItemState::NotChanged) && (new_state_for_origin == ItemState::NotChanged))
+			if ((new_state_for_host == ItemState::NotChanged) && (new_state_for_origin == ItemState::NotChanged))
 			{
 				vhost->state = ItemState::NotChanged;
 			}
@@ -153,8 +153,9 @@ namespace ocst
 		return result;
 	}
 
-	const std::vector<std::shared_ptr<ocst::VirtualHost>> &Orchestrator::GetVirtualHostList()
+	std::vector<std::shared_ptr<ocst::VirtualHost>> Orchestrator::GetVirtualHostList()
 	{
+		auto scoped_lock = std::scoped_lock(_virtual_host_map_mutex);
 		return _virtual_host_list;
 	}
 
@@ -279,7 +280,7 @@ namespace ocst
 		return OrchestratorInternal::GetUrlListForLocation(vhost_app_name, host_name, stream_name, url_list, nullptr, nullptr);
 	}
 
-	ocst::Result Orchestrator::CreateApplication(const info::Host &host_info, const cfg::Application &app_config)
+	ocst::Result Orchestrator::CreateApplication(const info::Host &host_info, const cfg::vhost::app::Application &app_config)
 	{
 		auto scoped_lock = std::scoped_lock(_module_list_mutex, _virtual_host_map_mutex);
 
@@ -342,14 +343,19 @@ namespace ocst
 		return OrchestratorInternal::GetApplicationInfo(vhost_app_name);
 	}
 
-	bool Orchestrator::RequestPullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name, const ov::String &url, off_t offset)
+	bool Orchestrator::RequestPullStream(
+		const std::shared_ptr<const ov::Url> &request_from,
+		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+		const ov::String &url, off_t offset)
 	{
-		auto parsed_url = ov::Url::Parse(url.CStr());
+		auto parsed_url = ov::Url::Parse(url);
 
 		if (parsed_url != nullptr)
 		{
 			// The URL has a scheme
 			auto source = parsed_url->Source();
+
+			OV_ASSERT(url == source, "url and source must be the same, but url: %s, source: %s", url.CStr(), source.CStr());
 
 			std::shared_ptr<PullProviderModuleInterface> provider_module;
 			auto app_info = info::Application::GetInvalidApplication();
@@ -397,7 +403,7 @@ namespace ocst
 				  vhost_app_name.CStr(), stream_name.CStr(),
 				  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 
-			auto stream = provider_module->PullStream(app_info, stream_name, {source}, offset);
+			auto stream = provider_module->PullStream(request_from, app_info, stream_name, {source}, offset);
 
 			if (stream != nullptr)
 			{
@@ -445,7 +451,11 @@ namespace ocst
 		return false;
 	}
 
-	bool Orchestrator::RequestPullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name, off_t offset)
+	// Pull a stream using Origin map
+	bool Orchestrator::RequestPullStream(
+		const std::shared_ptr<const ov::Url> &request_from,
+		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+		off_t offset)
 	{
 		std::shared_ptr<PullProviderModuleInterface> provider_module;
 		auto app_info = info::Application::GetInvalidApplication();
@@ -456,10 +466,14 @@ namespace ocst
 		Origin *matched_origin = nullptr;
 		Host *matched_host = nullptr;
 
+		auto &host_name = request_from->Host();
+
 		{
 			auto scoped_lock = std::scoped_lock(_virtual_host_map_mutex);
 
-			if (OrchestratorInternal::GetUrlListForLocation(vhost_app_name, host_name, stream_name, &url_list, &matched_origin, &matched_host) == false)
+			std::vector<ov::String> url_list_in_map;
+
+			if (OrchestratorInternal::GetUrlListForLocation(vhost_app_name, host_name, stream_name, &url_list_in_map, &matched_origin, &matched_host) == false)
 			{
 				logte("Could not find Origin for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
 				return false;
@@ -507,13 +521,31 @@ namespace ocst
 					return false;
 				}
 			}
+
+			if (request_from->HasQueryString())
+			{
+				// Combine query string with the URL
+				for (auto url : url_list_in_map)
+				{
+					auto parsed_url = ov::Url::Parse(url);
+
+					url.Append(parsed_url->HasQueryString() ? '&' : '?');
+					url.Append(request_from->Query());
+
+					url_list.push_back(url);
+				}
+			}
+			else
+			{
+				url_list = std::move(url_list_in_map);
+			}
 		}
 
 		logti("Trying to pull stream [%s/%s] from provider using origin map: %s",
 			  vhost_app_name.CStr(), stream_name.CStr(),
 			  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 
-		auto stream = provider_module->PullStream(app_info, stream_name, url_list, offset);
+		auto stream = provider_module->PullStream(request_from, app_info, stream_name, url_list, offset);
 
 		if (stream != nullptr)
 		{
@@ -524,7 +556,7 @@ namespace ocst
 			auto &origin_stream_map = matched_origin->stream_map;
 			auto exists_in_origin = (origin_stream_map.find(stream_id) != origin_stream_map.end());
 
-			auto key_pair = std::pair(host_name, app_name);
+			auto key_pair = std::pair(host_name, vhost_app_name.GetAppName());
 
 			auto &host_stream_map = matched_host->stream_map[key_pair];
 			bool exists_in_domain = (host_stream_map.find(stream_id) != host_stream_map.end());
@@ -564,6 +596,7 @@ namespace ocst
 			case Result::Failed:
 			case Result::NotExists:
 				// This is a bug - Must be handled above
+				logtc("Result is not expected: %d (This is a bug)", result);
 				OV_ASSERT2(false);
 				break;
 
@@ -594,4 +627,31 @@ namespace ocst
 		logtd("%s stream is deleted", info->GetName().CStr());
 		return true;
 	}
+
+	std::shared_ptr<pub::Publisher> Orchestrator::GetPublisherFromType(const PublisherType type)
+	{
+		// Find the publisehr
+		for (auto info = _module_list.begin(); info != _module_list.end(); ++info)
+		{
+			if (info->type == ModuleType::Publisher)
+			{
+				auto publisher = std::dynamic_pointer_cast<pub::Publisher>(info->module);
+
+				if (publisher == nullptr)
+				{
+					OV_ASSERT(publisher != nullptr, "Provider must inherit from pub::Publisehr");
+					continue;
+				}
+
+				if (publisher->GetPublisherType() == type)
+				{
+					return publisher;
+				}
+			}
+		}
+
+		logtw("Publisher (%d) is not found from type");
+
+		return nullptr;
+	}	
 }  // namespace ocst

@@ -17,10 +17,12 @@
 
 #include <modules/ice/ice_port_manager.h>
 #include <modules/physical_port/physical_port.h>
-#include <orchestrator/orchestrator.h>
 
-#include <modules/signed_url/signed_url.h>
+#include <orchestrator/data_structures/data_structure.h>
 
+#include <modules/signature/signature_common_type.h>
+#include <modules/signature/signed_policy.h>
+#include <modules/signature/signed_token.h>
 
 #include <chrono>
 
@@ -89,20 +91,6 @@ namespace pub
 		std::chrono::system_clock::time_point check_time;  // (chrono)
 	};
 
-	enum class SignedUrlErrCode
-	{
-		Pass = 0, // Turned SignedURL off 
-		Success,
-		Unexpected,
-		NoSingedKey,
-		DecryptFailed,
-		TokenExpired,
-		StreamExpired,
-		UnauthorizedClient,
-		WrongUrl
-	};
-
-
 	// All publishers such as WebRTC, HLS and MPEG-DASH has to inherit the Publisher class and implement that interfaces
 	class Publisher : public ocst::PublisherModuleInterface
 	{
@@ -114,7 +102,7 @@ namespace pub
 
 		// First GetStream(vhost_app_name, stream_name) and if it fails pull stream by the orchetrator
 		// If an url is set, the url is higher priority than OriginMap
-		std::shared_ptr<Stream> PullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name, const std::shared_ptr<const ov::Url> &request);
+		std::shared_ptr<Stream> PullStream(const std::shared_ptr<const ov::Url> &request_from, const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &stream_name);
 		std::shared_ptr<Stream> GetStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
 		template <typename T>
 		std::shared_ptr<T> GetStreamAs(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
@@ -122,6 +110,7 @@ namespace pub
 			return std::static_pointer_cast<T>(GetStream(vhost_app_name, stream_name));
 		}
 
+		uint32_t GetApplicationCount();
 		std::shared_ptr<Application> GetApplicationById(info::application_id_t application_id);
 		std::shared_ptr<Stream> GetStream(info::application_id_t application_id, uint32_t stream_id);
 		template <typename T>
@@ -129,10 +118,6 @@ namespace pub
 		{
 			return std::static_pointer_cast<T>(GetStream(application_id, stream_id));
 		}
-
-		// monitoring data pure virtual function
-		// - collected_datas vector must be insert processed
-		virtual bool GetMonitoringCollectionData(std::vector<std::shared_ptr<pub::MonitoringCollectionData>> &collections) = 0;
 
 		//--------------------------------------------------------------------
 		// Implementation of ModuleInterface
@@ -153,8 +138,10 @@ namespace pub
 		virtual std::shared_ptr<Application> OnCreatePublisherApplication(const info::Application &application_info) = 0;
 		virtual bool OnDeletePublisherApplication(const std::shared_ptr<pub::Application> &application) = 0;
 
-		// return true if all conditions are passed
-		SignedUrlErrCode HandleSignedUrl(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address, std::shared_ptr<const SignedUrl> &signed_url, ov::String &err_message);
+		// SignedPolicy is an official feature
+		CheckSignatureResult HandleSignedPolicy(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address, std::shared_ptr<const SignedPolicy> &signed_policy);
+		// SingedToken is used only special purposes
+		CheckSignatureResult HandleSignedToken(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address, std::shared_ptr<const SignedToken> &signed_token);
 
 		std::map<info::application_id_t, std::shared_ptr<Application>> 	_applications;
 		std::shared_mutex 		_application_map_mutex;

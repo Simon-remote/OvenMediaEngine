@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<Server version="7">
+
+<Server version="8">
 	<Name>Simon_OME</Name>
 	<!-- Host type (origin/edge) -->
 	<Type>edge</Type>
@@ -14,12 +15,12 @@
 			</OVT>
 		</Providers>
 		<Publishers>
-            <HLS>
+			<HLS>
 				<Port>${env:OME_HLS_STREAM_PORT:8090}</Port>
 				<!-- If you want to use TLS, specify the TLS port -->
 				<TLSPort>8443</TLSPort>
 			</HLS>
-            <DASH>
+			<DASH>
 				<Port>${env:OME_DASH_STREAM_PORT:8090}</Port>
 				<!-- If you want to use TLS, specify the TLS port -->
 				<!-- <TLSPort>8443</TLSPort> -->
@@ -58,6 +59,7 @@
 						<Name>*.sub.airensoft.com</Name>
 
 					<Name>*</Name>-->
+
 				</Names>
 				<TLS>
 					<CertPath>/opt/ovenmediaengine/bin/letsencrypt/cert.crt</CertPath>
@@ -65,15 +67,35 @@
 					<ChainCertPath>/opt/ovenmediaengine/bin/letsencrypt/fullchain.crt</ChainCertPath>
 				</TLS>
 
+
 			</Domain>
 			<SignedURL>
                 <CryptoKey>${env:SIGNED_URL_CRYPTO_KEY:}</CryptoKey>
                 <QueryStringKey>${env:SIGNED_URL_QUERY_KEY:authtoken}</QueryStringKey>
             </SignedURL>
+
+				-->
+			</Host>
+			
+			<!-- Refer https://airensoft.gitbook.io/ovenmediaengine/signedpolicy
+
+			<SignedPolicy>
+				<PolicyQueryKeyName>${env:SIGNED_POLICY_POLICY_QUERY_KEY:policy}</PolicyQueryKeyName>
+				<SignatureQueryKeyName>${env:SIGNED_POLICY_SIGNATURE_QUERY_KEY:signature}</SignatureQueryKeyName>
+				<SecretKey>${env:SIGNED_URL_CRYPTO_KEY:aKq#1kj}</SecretKey>
+
+				<Enables>
+					<Providers>rtmp</Providers>
+					<Publishers>webrtc,hls,dash,lldash</Publishers>
+				</Enables>
+			</SignedPolicy>
+			-->
+
+
 			<!-- Settings for ProxyPass (It can specify origin for each path) -->
 			<Origins>
-                <!--
-                <Origin>
+				<!--
+					<Origin>
 					<Location>/app/stream</Location>
 					<Pass>
 						<Scheme>ovt</Scheme>

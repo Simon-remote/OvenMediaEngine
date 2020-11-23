@@ -148,23 +148,23 @@ namespace ocst
 		return succeeded;
 	}
 
-	ocst::ItemState OrchestratorInternal::ProcessHostList(std::vector<Host> *domain_list, const cfg::Domain &domain_config) const
+	ocst::ItemState OrchestratorInternal::ProcessHostList(std::vector<Host> *host_list, const cfg::cmn::Host &host_config) const
 	{
 		bool is_changed = false;
 
 		// TODO(dimiden): Is there a way to reduce the cost of O(n^2)?
-		for (auto &domain_name : domain_config.GetNameList())
+		for (auto &host_name : host_config.GetNameList())
 		{
-			auto name = domain_name.GetName();
+			auto name = host_name.GetName();
 			bool found = false;
 
-			for (auto &domain : *domain_list)
+			for (auto &host : *host_list)
 			{
-				if (domain.state == ItemState::NeedToCheck)
+				if (host.state == ItemState::NeedToCheck)
 				{
-					if (domain.name == name)
+					if (host.name == name)
 					{
-						domain.state = ItemState::NotChanged;
+						host.state = ItemState::NotChanged;
 						found = true;
 						break;
 					}
@@ -173,10 +173,10 @@ namespace ocst
 
 			if (found == false)
 			{
-				logtd("      - %s: New", domain_name.GetName().CStr());
+				logtd("      - %s: New", host_name.GetName().CStr());
 				// Adding items here causes unnecessary iteration in the for statement above
 				// To avoid this, we need to create a separate list for each added item
-				domain_list->push_back(name);
+				host_list->push_back(name);
 				is_changed = true;
 			}
 		}
@@ -186,20 +186,20 @@ namespace ocst
 			// There was no new item
 
 			// Check for deleted items
-			for (auto &domain : *domain_list)
+			for (auto &host : *host_list)
 			{
-				switch (domain.state)
+				switch (host.state)
 				{
 					case ItemState::NeedToCheck:
 						// This item was deleted because it was never processed in the above process
-						logtd("      - %s: Deleted", domain.name.CStr());
-						domain.state = ItemState::Delete;
+						logtd("      - %s: Deleted", host.name.CStr());
+						host.state = ItemState::Delete;
 						is_changed = true;
 						break;
 
 					case ItemState::NotChanged:
 						// Nothing to do
-						logtd("      - %s: Not changed", domain.name.CStr());
+						logtd("      - %s: Not changed", host.name.CStr());
 						break;
 
 					case ItemState::Unknown:
@@ -219,7 +219,7 @@ namespace ocst
 		return is_changed ? ItemState::Changed : ItemState::NotChanged;
 	}
 
-	ocst::ItemState OrchestratorInternal::ProcessOriginList(std::vector<Origin> *origin_list, const cfg::Origins &origins_config) const
+	ocst::ItemState OrchestratorInternal::ProcessOriginList(std::vector<Origin> *origin_list, const cfg::vhost::orgn::Origins &origins_config) const
 	{
 		bool is_changed = false;
 
@@ -249,7 +249,7 @@ namespace ocst
 
 							bool is_equal = std::equal(
 								first_url_list.begin(), first_url_list.end(), second_url_list.begin(),
-								[&origin](const cfg::Url &url1, const cfg::Url &url2) -> bool {
+								[&origin](const cfg::cmn::Url &url1, const cfg::cmn::Url &url2) -> bool {
 									bool result = url1.GetUrl() == url2.GetUrl();
 
 									if (result == false)
@@ -399,7 +399,7 @@ namespace ocst
 	std::shared_ptr<pvd::Provider> OrchestratorInternal::GetProviderForUrl(const ov::String &url)
 	{
 		// Find a provider type using the scheme
-		auto parsed_url = ov::Url::Parse(url.CStr());
+		auto parsed_url = ov::Url::Parse(url);
 
 		if (url == nullptr)
 		{
@@ -412,35 +412,10 @@ namespace ocst
 		return GetProviderForScheme(parsed_url->Scheme());
 	}
 
-	bool OrchestratorInternal::ParseVHostAppName(const info::VHostAppName &vhost_app_name, ov::String *vhost_name, ov::String *real_app_name) const
-	{
-		auto tokens = vhost_app_name.ToString().Split("#");
-
-		if (tokens.size() == 3)
-		{
-			// #<vhost_name>#<app_name>
-			OV_ASSERT2(tokens[0] == "");
-
-			if (vhost_name != nullptr)
-			{
-				*vhost_name = tokens[1];
-			}
-
-			if (real_app_name != nullptr)
-			{
-				*real_app_name = tokens[2];
-			}
-			return true;
-		}
-
-		OV_ASSERT2(false);
-		return false;
-	}
-
 	info::VHostAppName OrchestratorInternal::ResolveApplicationName(const ov::String &vhost_name, const ov::String &app_name) const
 	{
 		// Replace all # to _
-		return info::VHostAppName(ov::String::FormatString("#%s#%s", vhost_name.Replace("#", "_").CStr(), app_name.Replace("#", "_").CStr()));
+		return info::VHostAppName(vhost_name, app_name);
 	}
 
 	std::shared_ptr<ocst::VirtualHost> OrchestratorInternal::GetVirtualHost(const ov::String &vhost_name)
@@ -467,38 +442,33 @@ namespace ocst
 		return vhost_item->second;
 	}
 
-	std::shared_ptr<ocst::VirtualHost> OrchestratorInternal::GetVirtualHost(const info::VHostAppName &vhost_app_name, ov::String *real_app_name)
+	std::shared_ptr<ocst::VirtualHost> OrchestratorInternal::GetVirtualHost(const info::VHostAppName &vhost_app_name)
 	{
-		ov::String vhost_name;
-
-		if (ParseVHostAppName(vhost_app_name, &vhost_name, real_app_name))
+		if (vhost_app_name.IsValid())
 		{
-			return GetVirtualHost(vhost_name);
+			return GetVirtualHost(vhost_app_name.GetVHostName());
 		}
 
-		// Invalid format
+		// vhost_app_name must be valid
 		OV_ASSERT2(false);
 		return nullptr;
 	}
 
-	std::shared_ptr<const ocst::VirtualHost> OrchestratorInternal::GetVirtualHost(const info::VHostAppName &vhost_app_name, ov::String *real_app_name) const
+	std::shared_ptr<const ocst::VirtualHost> OrchestratorInternal::GetVirtualHost(const info::VHostAppName &vhost_app_name) const
 	{
-		ov::String vhost_name;
-
-		if (ParseVHostAppName(vhost_app_name, &vhost_name, real_app_name))
+		if (vhost_app_name.IsValid())
 		{
-			return GetVirtualHost(vhost_name);
+			return GetVirtualHost(vhost_app_name.GetVHostName());
 		}
 
-		// Invalid format
+		// vhost_app_name must be valid
 		OV_ASSERT2(false);
 		return nullptr;
 	}
 
 	bool OrchestratorInternal::GetUrlListForLocation(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &stream_name, std::vector<ov::String> *url_list, Origin **matched_origin, Host **matched_host)
 	{
-		ov::String real_app_name;
-		auto vhost = GetVirtualHost(vhost_app_name, &real_app_name);
+		auto vhost = GetVirtualHost(vhost_app_name);
 
 		if (vhost == nullptr)
 		{
@@ -512,7 +482,7 @@ namespace ocst
 		auto &host_list = vhost->host_list;
 		auto &origin_list = vhost->origin_list;
 
-		ov::String location = ov::String::FormatString("/%s/%s", real_app_name.CStr(), stream_name.CStr());
+		ov::String location = ov::String::FormatString("/%s/%s", vhost_app_name.GetAppName().CStr(), stream_name.CStr());
 
 		// Find the host using the location
 		for (auto &host : host_list)
@@ -558,7 +528,7 @@ namespace ocst
 				//                        ~~ <= remaining part
 				auto remaining_part = location.Substring(origin.location.GetLength());
 
-				logtd("Found: location: %s (app: %s, stream: %s), remaining_part: %s", origin.location.CStr(), real_app_name.CStr(), stream_name.CStr(), remaining_part.CStr());
+				logtd("Found: location: %s (app: %s, stream: %s), remaining_part: %s", origin.location.CStr(), vhost_app_name.GetAppName().CStr(), stream_name.CStr(), remaining_part.CStr());
 
 				for (auto url : origin.url_list)
 				{
@@ -573,10 +543,21 @@ namespace ocst
 					url.Prepend("://");
 					url.Prepend(origin.scheme);
 
-					// Append remaining_part
-					url.Append(remaining_part);
+					// Exclude query string from url
+					auto index = url.IndexOf('?');
+					auto url_part = url.Substring(0, index);
+					auto another_part = url.Substring(index + 1);
 
-					url_list->push_back(url);
+					// Append remaining_part
+					url_part.Append(remaining_part);
+
+					if(index >= 0)
+					{
+						url_part.Append('?');
+						url_part.Append(another_part);
+					}
+
+					url_list->push_back(url_part);
 				}
 
 				found_matched_origin = (url_list->size() > 0) ? &origin : nullptr;
@@ -674,12 +655,13 @@ namespace ocst
 	{
 		OV_ASSERT2(app_info != nullptr);
 
-		ov::String vhost_name;
-
-		if (ParseVHostAppName(vhost_app_name, &vhost_name, nullptr))
+		if (vhost_app_name.IsValid())
 		{
+			auto &vhost_name = vhost_app_name.GetVHostName();
 			auto vhost = GetVirtualHost(vhost_name);
+
 			*app_info = info::Application(vhost->host_info, GetNextAppId(), vhost_app_name, true);
+
 			return CreateApplication(vhost_name, *app_info);
 		}
 
@@ -751,22 +733,21 @@ namespace ocst
 
 	ocst::Result OrchestratorInternal::DeleteApplication(const info::Application &app_info)
 	{
-		ov::String vhost_name;
+		auto &vhost_app_name = app_info.GetName();
 
-		if (ParseVHostAppName(app_info.GetName(), &vhost_name, nullptr) == false)
+		if(vhost_app_name.IsValid() == false)
 		{
 			return Result::Failed;
 		}
 
-		return DeleteApplication(vhost_name, app_info.GetId());
+		return DeleteApplication(vhost_app_name.GetVHostName(), app_info.GetId());
 	}
 
 	const info::Application &OrchestratorInternal::GetApplicationInfo(const info::VHostAppName &vhost_app_name) const
 	{
-		ov::String vhost_name;
-
-		if (ParseVHostAppName(vhost_app_name, &vhost_name, nullptr))
+		if(vhost_app_name.IsValid())
 		{
+			auto &vhost_name = vhost_app_name.GetVHostName();
 			auto vhost = GetVirtualHost(vhost_name);
 
 			if (vhost != nullptr)

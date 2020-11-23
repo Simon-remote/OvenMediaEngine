@@ -1,5 +1,6 @@
 #include "publisher.h"
 #include "publisher_private.h"
+#include <orchestrator/orchestrator.h>
 
 namespace pub
 {
@@ -61,7 +62,7 @@ namespace pub
 					{
 						// This provider is diabled
 						logti("%s publisher is disabled in %s application, so it was not created", 
-								ov::Converter::ToString(GetPublisherType()).CStr(), app_info.GetName().CStr());
+								::StringFromPublisherType(GetPublisherType()).CStr(), app_info.GetName().CStr());
 						return true;
 					}
 				}
@@ -118,7 +119,7 @@ namespace pub
 				}
 			}
 
-			logte("%s publihser hasn't the %s application.", ov::Converter::ToString(GetPublisherType()).CStr(), app_info.GetName().CStr());
+			logte("%s publihser hasn't the %s application.", ::StringFromPublisherType(GetPublisherType()).CStr(), app_info.GetName().CStr());
 			return false;
 		}
 
@@ -133,11 +134,16 @@ namespace pub
 		bool result = OnDeletePublisherApplication(application);
 		if(result == false)
 		{
-			logte("Could not delete the %s application of the %s publisher", app_info.GetName().CStr(), ov::Converter::ToString(GetPublisherType()).CStr());
+			logte("Could not delete the %s application of the %s publisher", app_info.GetName().CStr(), ::StringFromPublisherType(GetPublisherType()).CStr());
 			return false;
 		}
 
 		return true;
+	}
+
+	uint32_t Publisher::GetApplicationCount()
+	{
+		return _applications.size();
 	}
 
 	std::shared_ptr<Application> Publisher::GetApplicationByName(const info::VHostAppName &vhost_app_name)
@@ -155,7 +161,7 @@ namespace pub
 		return nullptr;
 	}
 
-	std::shared_ptr<Stream> Publisher::PullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name, const std::shared_ptr<const ov::Url> &request)
+	std::shared_ptr<Stream> Publisher::PullStream(const std::shared_ptr<const ov::Url> &request_from, const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &stream_name)
 	{
 		auto stream = GetStream(vhost_app_name, stream_name);
 		if(stream != nullptr)
@@ -174,13 +180,13 @@ namespace pub
 		if(	vapp_name.HasSuffix("#rtsp_live") || vapp_name.HasSuffix("#rtsp_playback") ||
 			vapp_name.HasSuffix("#rtsp_live_insecure") || vapp_name.HasSuffix("#rtsp_playback_insecure"))
 		{
-			if(request != nullptr)
+			if(request_from != nullptr)
 			{
-				auto &query_map = request->QueryMap();
+				auto &query_map = request_from->QueryMap();
 				auto rtsp_uri_item = query_map.find("rtspURI");
 				if (rtsp_uri_item == query_map.end())
 				{
-					logte("There is no rtspURI parameter in the query string: %s", request->ToString().CStr());
+					logte("There is no rtspURI parameter in the query string: %s", request_from->ToString().CStr());
 
 					logtd("Query map:");
 					for ([[maybe_unused]] auto &query : query_map)
@@ -197,14 +203,14 @@ namespace pub
 		
 		if(pull_url.IsEmpty())
 		{
-			if(orchestrator->RequestPullStream(vhost_app_name, host_name, app_name, stream_name) == false)
+			if(orchestrator->RequestPullStream(request_from, vhost_app_name, stream_name) == false)
 			{
 				return nullptr;
 			}
 		}
 		else
 		{
-			if(orchestrator->RequestPullStream(vhost_app_name, host_name, app_name, stream_name, pull_url) == false)
+			if(orchestrator->RequestPullStream(request_from, vhost_app_name, stream_name, pull_url) == false)
 			{
 				return nullptr;
 			}
@@ -249,16 +255,16 @@ namespace pub
 		return nullptr;
 	}
 
-	SignedUrlErrCode Publisher::HandleSignedUrl(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address, std::shared_ptr<const SignedUrl> &signed_url, ov::String &err_message)
+	CheckSignatureResult Publisher::HandleSignedPolicy(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address, std::shared_ptr<const SignedPolicy> &signed_policy)
 	{
 		auto orchestrator = ocst::Orchestrator::GetInstance();
 		auto &server_config = GetServerConfig();
-		auto vhost_name = orchestrator->GetVhostNameFromDomain(request_url->Domain());
+		auto vhost_name = orchestrator->GetVhostNameFromDomain(request_url->Host());
 
 		if (vhost_name.IsEmpty())
 		{
-			err_message.Format("Could not resolve the domain: %s", request_url->Domain().CStr());
-			return SignedUrlErrCode::Unexpected;
+			logte("Could not resolve the domain: %s", request_url->Host().CStr());
+			return CheckSignatureResult::Error;
 		}
 
 		// TODO(Dimiden) : Modify below codes
@@ -271,85 +277,97 @@ namespace pub
 				continue;
 			}
 
-			// Handle Signed URL if needed
-			auto &signed_url_config = vhost_item.GetSignedUrl();
-			if (!signed_url_config.IsParsed() || signed_url_config.GetCryptoKey().IsEmpty())
+			// Handle SignedPolicy if needed
+			auto &signed_policy_config = vhost_item.GetSignedPolicy();
+			if (!signed_policy_config.IsParsed())
 			{
-				// The vhost doesn't use the signed url feature.
-				return SignedUrlErrCode::Pass;
+				// The vhost doesn't use the SignedPolicy  feature.
+				return CheckSignatureResult::Off;
 			}
 
-			// Load config (crypto key, query string key)
-			// TODO(Getroot): load signed url type from config and apply them
-			auto signed_type = SignedUrlType::Type0;
-			auto crypto_key = signed_url_config.GetCryptoKey();
-			auto query_string_key = signed_url_config.GetQueryStringKey();
-
-			// Find a signed key in the query string
-			auto &query_map = request_url->QueryMap();
-			auto item = query_map.find(query_string_key);
-			if (item == query_map.end())
+			if(signed_policy_config.IsEnabledPublisher(GetPublisherType()) == false)
 			{
-				return SignedUrlErrCode::NoSingedKey;
+				// This publisher turned off the SignedPolicy function
+				return CheckSignatureResult::Off;
 			}
 
-			// Decoding and parsing
-			signed_url = SignedUrl::Load(signed_type, crypto_key, item->second);
-			if (signed_url == nullptr)
+			auto policy_query_key_name = signed_policy_config.GetPolicyQueryKeyName();
+			auto signature_query_key_name = signed_policy_config.GetSignatureQueryKeyName();
+			auto secret_key = signed_policy_config.GetSecretKey();
+
+			signed_policy = SignedPolicy::Load(client_address->ToString(), request_url->ToUrlString(), policy_query_key_name, signature_query_key_name, secret_key);
+			if(signed_policy == nullptr)
 			{
-				err_message.Format("Could not obtain decrypted information of the signed url: %s, key: %s, value: %s", request_url->Source().CStr(), query_string_key.CStr(), item->second.CStr());
-				return SignedUrlErrCode::DecryptFailed;
+				// Probably this doesn't happen
+				logte("Could not load SingedToken");
+				return CheckSignatureResult::Error;
 			}
 
-			// Check conditions
-
-			if(signed_url->IsTokenExpired())
+			if(signed_policy->GetErrCode() != SignedPolicy::ErrCode::PASSED)
 			{
-				err_message.Format("Token is expired: %lld (Now: %lld)", signed_url->GetTokenExpiredTime(), ov::Clock::NowMS());
-				return SignedUrlErrCode::TokenExpired;
+				return CheckSignatureResult::Fail;
 			}
 
-			if(signed_url->IsStreamExpired())
-			{
-				err_message.Format("Stream is expired: %lld (Now: %lld)", signed_url->GetStreamExpiredTime(), ov::Clock::NowMS());
-				return SignedUrlErrCode::StreamExpired;
-			}
-
-			// Check client ip
-			if(signed_url->IsAllowedClient(*client_address) == false)
-			{
-				err_message.Format("Not allowed: %s (Expected: %s)", client_address->ToString().CStr(), signed_url->GetClientIP().CStr());
-				return SignedUrlErrCode::UnauthorizedClient;
-			}
-
-			// Check URL is same
-			// remake url except for signed key
-			auto url_to_compare = request_url->ToUrlString(false);
-			url_to_compare.Append("?");
-			for(const auto &query : query_map)
-			{
-				auto key = query.first;
-				auto value = query.second;
-
-				// signed key is excluded
-				if(key.UpperCaseString() == query_string_key.UpperCaseString())
-				{
-					continue;
-				}
-
-				url_to_compare.AppendFormat("%s=%s", key.CStr(), ov::Url::Encode(value).CStr());
-			}
-
-			if(url_to_compare.UpperCaseString() != signed_url->GetUrl().UpperCaseString())
-			{
-				err_message.Format("Invalid URL: %s (Expected: %s)",	signed_url->GetUrl().CStr(), url_to_compare.CStr());
-				return SignedUrlErrCode::WrongUrl;
-			}
-
-			return SignedUrlErrCode::Success;
+			return CheckSignatureResult::Pass;
 		}
 
-		return SignedUrlErrCode::Unexpected;
+		// Probably this doesn't happen
+		logte("Could not find VirtualHost (%s)", vhost_name);
+		return CheckSignatureResult::Error;
+	}
+
+	CheckSignatureResult Publisher::HandleSignedToken(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address, std::shared_ptr<const SignedToken> &signed_token)
+	{
+		auto orchestrator = ocst::Orchestrator::GetInstance();
+		auto &server_config = GetServerConfig();
+		auto vhost_name = orchestrator->GetVhostNameFromDomain(request_url->Host());
+
+		if (vhost_name.IsEmpty())
+		{
+			logte("Could not resolve the domain: %s", request_url->Host().CStr());
+			return CheckSignatureResult::Error;
+		}
+
+		// TODO(Dimiden) : Modify below codes
+		// GetVirtualHostByName is deprecated so blow codes are insane, later it will be modified.
+		auto vhost_list = server_config.GetVirtualHostList();
+		for (const auto &vhost_item : vhost_list)
+		{
+			if (vhost_item.GetName() != vhost_name)
+			{
+				continue;
+			}
+
+			// Handle SignedToken if needed
+			auto &signed_token_config = vhost_item.GetSignedToken();
+			if (!signed_token_config.IsParsed() || signed_token_config.GetCryptoKey().IsEmpty())
+			{
+				// The vhost doesn't use the signed url feature.
+				return CheckSignatureResult::Off;
+			}
+
+			auto crypto_key = signed_token_config.GetCryptoKey();
+			auto query_string_key = signed_token_config.GetQueryStringKey();
+
+			signed_token = SignedToken::Load(client_address->ToString(), request_url->ToUrlString(), query_string_key, crypto_key);
+			if (signed_token == nullptr)
+			{
+				// Probably this doesn't happen
+				logte("Could not load SingedToken");
+				return CheckSignatureResult::Error;
+			}
+
+			if(signed_token->GetErrCode() != SignedToken::ErrCode::PASSED)
+			{
+				return CheckSignatureResult::Fail;
+			}
+
+			return CheckSignatureResult::Pass;
+		}
+
+		// Probably this doesn't happen
+		logte("Could not find VirtualHost (%s)", vhost_name);
+		return CheckSignatureResult::Error;
 	}
 
 }  // namespace pub

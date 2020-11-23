@@ -10,28 +10,27 @@
 
 #include "orchestrator_internal.h"
 
-//
-// Orchestrator is responsible for passing commands to registered modules, such as Provider/MediaRouter/Transcoder/Publisher.
-//
-// Orchestrator will upgrade to perform the following roles:
-//
-// 1. The publisher can request the provider to create a stream.
-// 2. Other modules may request Provider/Publisher traffic information. (Especially, it will be used by the RESTful API server)
-// 3. Create or manage new applications.
-//    For example, if some module calls Orchestrator::CreateApplication(), the Orchestrator will create a new app
-//    using the APIs of Providers, MediaRouter, and Publishers as appropriate.
-//
-// TODO(dimiden): Modification is required so that the module can be managed per Host
-
 namespace ocst
 {
+	//
+	// Orchestrator is responsible for passing commands to registered modules, such as Provider/MediaRouter/Transcoder/Publisher.
+	//
+	// Orchestrator will upgrade to perform the following roles:
+	//
+	// 1. The publisher can request the provider to create a stream.
+	// 2. Other modules may request Provider/Publisher traffic information. (Especially, it will be used by the RESTful API server)
+	// 3. Create or manage new applications.
+	//    For example, if some module calls Orchestrator::CreateApplication(), the Orchestrator will create a new app
+	//    using the APIs of Providers, MediaRouter, and Publishers as appropriate.
+	//
+	// TODO(dimiden): Modification is required so that the module can be managed per Host
 	class Orchestrator : public ov::Singleton<Orchestrator>,
 						 protected OrchestratorInternal
 	{
 	public:
 		bool ApplyOriginMap(const std::vector<info::Host> &host_list);
 
-		const std::vector<std::shared_ptr<ocst::VirtualHost>> &GetVirtualHostList();
+		std::vector<std::shared_ptr<ocst::VirtualHost>> GetVirtualHostList();
 
 		/// Register the module
 		///
@@ -79,7 +78,7 @@ namespace ocst
 		/// @return Creation result
 		///
 		/// @note Automatically DeleteApplication() when application creation fails
-		Result CreateApplication(const info::Host &vhost_info, const cfg::Application &app_config);
+		Result CreateApplication(const info::Host &vhost_info, const cfg::vhost::app::Application &app_config);
 		/// Delete the application and notify the modules
 		///
 		/// @param app_info Application information to delete
@@ -94,22 +93,67 @@ namespace ocst
 		const info::Application &GetApplicationInfo(const ov::String &vhost_name, const ov::String &app_name) const;
 		const info::Application &GetApplicationInfo(const info::VHostAppName &vhost_app_name) const;
 
-		bool RequestPullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name, const ov::String &url, off_t offset);
-		bool RequestPullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name, const ov::String &url)
+		/// Pull a stream using specified URL with offset
+		///
+		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
+		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
+		/// @param url URL to pull
+		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
+		bool RequestPullStream(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+			const ov::String &url, off_t offset);
+
+		/// Pull a stream using specified URL
+		///
+		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
+		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
+		/// @param url URL to pull
+		bool RequestPullStream(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+			const ov::String &url)
 		{
-			return RequestPullStream(vhost_app_name, host_name, app_name, stream_name, url, 0);
+			return RequestPullStream(request_from, vhost_app_name, stream_name, url, 0);
 		}
 
-		bool RequestPullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name, off_t offset);
-		bool RequestPullStream(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name)
+		/// Pull a stream using Origin map with offset
+		///
+		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
+		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
+		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
+		bool RequestPullStream(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+			off_t offset);
+
+		/// Pull a stream using Origin map with offset
+		///
+		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
+		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
+		bool RequestPullStream(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
 		{
-			return RequestPullStream(vhost_app_name, host_name, app_name, stream_name, 0);
+			return RequestPullStream(request_from, vhost_app_name, stream_name, 0);
 		}
+
+		/// Find Publisher from PublisehrType
+		std::shared_ptr<pub::Publisher> GetPublisherFromType(const PublisherType type);
+
 
 		//--------------------------------------------------------------------
 		// Implementation of ocst::Application::CallbackInterface
 		//--------------------------------------------------------------------
 		bool OnCreateStream(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
 		bool OnDeleteStream(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
+
+	protected:
+		std::recursive_mutex _module_list_mutex;
+		mutable std::recursive_mutex _virtual_host_map_mutex;
 	};
 }  // namespace ocst

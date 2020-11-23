@@ -28,11 +28,11 @@ namespace pvd
 		};
 
 		PullingItem(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, const std::vector<ov::String> &url_list, off_t offset)
+			: _vhost_app_name(vhost_app_name),
+			_stream_name(stream_name),
+			_url_list(url_list),
+			_offset(offset)
 		{
-			_vhost_app_name = vhost_app_name;
-			_stream_name = stream_name;
-			_url_list = url_list;
-			_offset = offset;
 		}
 
 		void SetState(PullingItemState state)
@@ -91,7 +91,10 @@ namespace pvd
 		//--------------------------------------------------------------------
 		// Implementation of PullProviderModuleInterface
 		//--------------------------------------------------------------------
-		std::shared_ptr<pvd::Stream> PullStream(const info::Application &app_info, const ov::String &stream_name, const std::vector<ov::String> &url_list, off_t offset) override;
+		std::shared_ptr<pvd::Stream> PullStream(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::Application &app_info, const ov::String &stream_name,
+			const std::vector<ov::String> &url_list, off_t offset) override;
 		bool StopStream(const info::Application &app_info, const std::shared_ptr<pvd::Stream> &stream) override;
 		//--------------------------------------------------------------------
 
