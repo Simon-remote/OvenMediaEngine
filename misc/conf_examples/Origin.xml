@@ -90,7 +90,6 @@
 					<ChainCertPath>path/to/file.crt</ChainCertPath>
 				</TLS>
 				-->
-
 			</Host>
 			<Origins>
 				<Origin>
@@ -121,7 +120,7 @@
 							<Urls><Url>${env:CAMERA_4_RTSP_URL}</Url></Urls>
 						</Pass>
 				</Origin>
-
+      </Origins>
 			<!-- Settings for applications -->
 			<Applications>
 				<Application>
