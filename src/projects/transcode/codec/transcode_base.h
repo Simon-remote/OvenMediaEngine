@@ -32,6 +32,7 @@ extern "C"
 
 enum class TranscodeResult : int32_t
 {
+	Again = -5,
 	// An error occurred while process the packet/frame
 	DataError = -4,
 	// An error occurred while parse the packet using av_parser_parse2()
@@ -40,6 +41,7 @@ enum class TranscodeResult : int32_t
 	NoData = -2,
 	// End of file
 	EndOfFile = -1,
+
 	// Decode/Encoder Complete and Reamin more data
 	DataReady = 0,
 	// Change Output Format
@@ -69,12 +71,12 @@ public:
 
 	uint32_t GetInputBufferSize()
 	{
-		return _input_buffer.size();
+		return _input_buffer.Size();
 	}
 
 	uint32_t GetOutputBufferSize()
 	{
-		return _output_buffer.size();
+		return _output_buffer.Size();
 	}
 
 protected:
@@ -103,7 +105,7 @@ protected:
 		}
 	}
 
-	std::deque<std::shared_ptr<const InputType>> _input_buffer;
-	std::deque<std::shared_ptr<OutputType>> _output_buffer;
+	ov::Queue<std::shared_ptr<const InputType>> _input_buffer;
+	ov::Queue<std::shared_ptr<OutputType>> _output_buffer;
 };
 

@@ -36,7 +36,7 @@ namespace mon
 
     bool ApplicationMetrics::OnStreamCreated(const info::Stream &stream)
     {
-        std::unique_lock<std::shared_mutex> lock(_map_guard);
+        std::unique_lock<std::shared_mutex> lock(_streams_guard);
         
         // If already stream metrics is exist,
         if(_streams.find(stream.GetId()) != _streams.end())
@@ -67,10 +67,21 @@ namespace mon
 
         logti("Delete StreamMetrics(%s) for monitoring", stream.GetName().CStr());
 
+
+		// If there are sessions in the stream, the number of visitors to the app is recalculated.
+		// Calculate connections to application only if it hasn't origin stream to prevent double subtract. 
+		if(stream_metric->GetOriginStream() == nullptr)
+		{
+			for(uint8_t type = static_cast<uint8_t>(PublisherType::Unknown); type < static_cast<uint8_t>(PublisherType::NumberOfPublishers); type++)
+			{
+				 OnSessionsDisconnected(static_cast<PublisherType>(type), stream_metric->GetConnections(static_cast<PublisherType>(type)));
+			}
+		}
+
         // logging StreamMetric
         stream_metric->ShowInfo();
 
-        std::unique_lock<std::shared_mutex> lock(_map_guard);
+        std::unique_lock<std::shared_mutex> lock(_streams_guard);
         {
             _streams.erase(stream.GetId());
         }
@@ -78,15 +89,15 @@ namespace mon
         return true;
     }
 
-    std::map<uint32_t, std::shared_ptr<StreamMetrics>> ApplicationMetrics::GetStreamMetricsList()
+    std::map<uint32_t, std::shared_ptr<StreamMetrics>> ApplicationMetrics::GetStreamMetricsMap()
     {
-        std::shared_lock<std::shared_mutex> lock(_map_guard);
+        std::shared_lock<std::shared_mutex> lock(_streams_guard);
         return _streams;
     }
 
     std::shared_ptr<StreamMetrics> ApplicationMetrics::GetStreamMetrics(const info::Stream &stream)
     {
-        std::shared_lock<std::shared_mutex> lock(_map_guard);
+        std::shared_lock<std::shared_mutex> lock(_streams_guard);
         if(_streams.find(stream.GetId()) == _streams.end())
         {
             return nullptr;
@@ -94,6 +105,30 @@ namespace mon
         
         return _streams[stream.GetId()];
     }
+
+	bool ApplicationMetrics::OnStreamReserved(ProviderType who, const ov::Url &stream_uri, const ov::String &stream_name)
+	{
+		auto reserved_stream_metric = std::make_shared<ReservedStreamMetrics>(who, stream_uri, stream_name);
+
+		std::lock_guard<std::shared_mutex> lock(_reserved_streams_guard);
+		_reserved_streams[stream_uri.Port()] = reserved_stream_metric;
+
+		logti("%s has reserved %s stream linked to %s", StringFromProviderType(who).CStr(), stream_name.CStr(), stream_uri.ToUrlString().CStr());
+
+		return true;
+	}
+
+	std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> ApplicationMetrics::GetReservedStreamMetricsMap()
+	{
+		std::shared_lock<std::shared_mutex> lock(_reserved_streams_guard);
+		return _reserved_streams;
+	}
+
+    std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> ApplicationMetrics::GetReservedStreamMetricsMap() const
+	{
+		std::shared_lock<std::shared_mutex> lock(_reserved_streams_guard);
+		return _reserved_streams;
+	}
 
     void ApplicationMetrics::IncreaseBytesIn(uint64_t value)
     {

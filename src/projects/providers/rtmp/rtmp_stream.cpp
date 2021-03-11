@@ -53,6 +53,29 @@ Process of publishing
  - AAC : Control Byte 
 */
 
+// When using b-frames in Wiredcast, sometimes CTS is negative, so a PTS < DTS situation occurs.
+// This is not a normal situation, so we need to adjust it.
+//
+// [OBS]
+// DTS   CTS   PTS
+//   0     0     0
+//   0    66    66
+//  33   166   199
+//  66    66   132
+//  99     0    99
+// 132    33   165
+//
+// [Wirecast]
+// DTS   CTS   PTS
+//   0     0     0
+//  33   100   133
+//  66     0    66
+// 100   -66    34 <== ERROR (PTS < DTS)
+// 133   -33   100 <== ERROR (PTS < DTS)
+// 166   100   266
+// 200     0   200
+#define ADJUST_PTS				(150)
+
 namespace pvd
 {
 	std::shared_ptr<RtmpStream> RtmpStream::Create(StreamSourceType source_type, uint32_t client_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider)
@@ -86,6 +109,8 @@ namespace pvd
 	bool RtmpStream::Start()
 	{
 		_state = Stream::State::PLAYING;
+		_negative_cts_detected = false;
+
 		return PushStream::Start();
 	}
 
@@ -266,7 +291,7 @@ namespace pvd
 	{
 		// Check SignedPolicy
 		
-		auto result = HandleSignedPolicy(_url, _remote->GetLocalAddress(), _signed_policy);
+		auto result = HandleSignedPolicy(_url, _remote->GetRemoteAddress(), _signed_policy);
 		if(result == CheckSignatureResult::Off)
 		{
 			return true;
@@ -1045,8 +1070,22 @@ namespace pvd
 				return false;
 			}
 
+			if (flv_video.CompositionTime() < 0L)
+			{
+				if (_negative_cts_detected == false)
+				{
+					logtw("A negative CTS has been detected and will attempt to adjust the PTS. HLS/DASH may not play smoothly in the beginning.");
+					_negative_cts_detected = true;
+				}
+			}
+
 			int64_t dts = message->header->completed.timestamp;
 			int64_t pts = dts + flv_video.CompositionTime();
+
+			if(_negative_cts_detected)
+			{
+				pts += ADJUST_PTS;
+			}
 
 			auto video_track = GetTrack(RTMP_VIDEO_TRACK_ID);
 			if(video_track == nullptr)
@@ -1058,7 +1097,7 @@ namespace pvd
 			dts *= video_track->GetVideoTimestampScale();
 			pts *= video_track->GetVideoTimestampScale();
 
-			cmn::PacketType	packet_type = cmn::PacketType::Unknwon;
+			cmn::PacketType	packet_type = cmn::PacketType::Unknown;
 			if(flv_video.PacketType() == FlvAvcPacketType::AVC_SEQUENCE_HEADER)
 			{
 				packet_type = cmn::PacketType::SEQUENCE_HEADER;
@@ -1196,9 +1235,14 @@ namespace pvd
 				return false;
 			}
 
-			int64_t pts = message->header->completed.timestamp;
-			int64_t dts = pts;
-			
+			int64_t dts = message->header->completed.timestamp;
+			int64_t pts = dts;
+
+			if(_negative_cts_detected)
+			{
+				pts += ADJUST_PTS;
+			}
+
 			// Get audio track info
 			auto audio_track = GetTrack(RTMP_AUDIO_TRACK_ID);
 			if(audio_track == nullptr)
@@ -1210,7 +1254,7 @@ namespace pvd
 			pts *= audio_track->GetAudioTimestampScale();
 			dts *= audio_track->GetAudioTimestampScale();
 
-			cmn::PacketType	packet_type = cmn::PacketType::Unknwon;
+			cmn::PacketType	packet_type = cmn::PacketType::Unknown;
 			if(flv_audio.PacketType() == FlvAACPacketType::SEQUENCE_HEADER)
 			{
 				packet_type = cmn::PacketType::SEQUENCE_HEADER;
@@ -1254,7 +1298,7 @@ namespace pvd
 		SetTrackInfo(_media_info);
 
 		// Publish
-		if(PublishInterleavedChannel(_vhost_app_name) == false)
+		if(PublishChannel(_vhost_app_name) == false)
 		{
 			Stop();
 			return false;
@@ -1334,44 +1378,31 @@ namespace pvd
 		return true;
 	}
 
-	bool RtmpStream::SendData(int data_size, uint8_t *data)
+	bool RtmpStream::SendData(const std::shared_ptr<const ov::Data> &data)
 	{
-		int remained = data_size;
-		uint8_t *data_to_send = data;
-
-		while (remained > 0L)
+		if (data == nullptr)
 		{
-			int to_send = std::min(remained, (int)(1024L * 1024L));
-			int sent = _remote->Send(data_to_send, to_send);
-
-			if (sent != to_send)
-			{
-				logtw("Send Data Loop Fail");
-				return false;
-			}
-
-			remained -= sent;
-			data_to_send += sent;
+			return false;
 		}
 
-		return true;
+		return _remote->Send(data);
+	}
+
+	bool RtmpStream::SendData(const void *data, size_t data_size)
+	{
+		if (data == nullptr)
+		{
+			return false;
+		}
+
+		return _remote->Send(data, data_size);
 	}
 
 	bool RtmpStream::SendMessagePacket(std::shared_ptr<RtmpMuxMessageHeader> &message_header, std::shared_ptr<std::vector<uint8_t>> &data)
 	{
-		if (message_header == nullptr)
-		{
-			return false;
-		}
-
 		auto export_data = _export_chunk->ExportStreamData(message_header, data);
 
-		if (export_data == nullptr || export_data->data() == nullptr)
-		{
-			return false;
-		}
-
-		return SendData(export_data->size(), export_data->data());
+		return SendData(export_data->data(), export_data->size());
 	}
 
 		//====================================================================================================
@@ -1390,7 +1421,7 @@ namespace pvd
 		_handshake_state = RtmpHandshakeState::C1;
 
 		// Send s0
-		if (SendData(sizeof(s0), &s0) == false)
+		if (SendData(&s0, sizeof(s0)) == false)
 		{
 			logte("Handshake s0 Send Fail");
 			return false;
@@ -1398,7 +1429,7 @@ namespace pvd
 		_handshake_state = RtmpHandshakeState::S0;
 
 		// Send s1
-		if (SendData(sizeof(s1), s1) == false)
+		if (SendData(s1, sizeof(s1)) == false)
 		{
 			logte("Handshake s1 Send Fail");
 			return false;
@@ -1406,7 +1437,7 @@ namespace pvd
 		_handshake_state = RtmpHandshakeState::S1;
 
 		// Send s2
-		if (SendData(sizeof(s2), s2) == false)
+		if (SendData(s2, sizeof(s2)) == false)
 		{
 			logte("Handshake s2 Send Fail");
 			return false;
@@ -1481,6 +1512,15 @@ namespace pvd
 		RtmpMuxUtil::WriteInt32(body->data(), _rtmp_stream_id);
 
 		return SendUserControlMessage(RTMP_UCMID_STREAMBEGIN, body);
+	}
+
+	bool RtmpStream::SendStreamEnd()
+	{
+		auto body = std::make_shared<std::vector<uint8_t>>(4);
+
+		RtmpMuxUtil::WriteInt32(body->data(), _rtmp_stream_id);
+
+		return SendUserControlMessage(RTMP_UCMID_STREAMEOF, body);
 	}
 
 	bool RtmpStream::SendAmfCommand(std::shared_ptr<RtmpMuxMessageHeader> &message_header, AmfDocument &document)

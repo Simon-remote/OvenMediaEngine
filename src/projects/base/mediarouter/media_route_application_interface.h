@@ -18,8 +18,9 @@ class RelayClient;
 class MediaRouteApplicationInterface : public ov::EnableSharedFromThis<MediaRouteApplicationInterface>
 {
 public:
-	virtual bool OnCreateStream(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
-	virtual bool OnDeleteStream(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
-	virtual bool OnReceiveBuffer(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) = 0;
+	virtual bool IsExistingInboundStream(ov::String stream_name) = 0;
+	virtual bool OnStreamCreated(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
+	virtual bool OnStreamDeleted(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
+	virtual bool OnPacketReceived(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) = 0;
 };
 

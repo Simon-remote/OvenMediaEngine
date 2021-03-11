@@ -3,8 +3,8 @@
 ## What is OvenMediaEngine?
 
 OvenMediaEngine (OME) is <b>Open-Source Streaming Server</b> with <b>Sub-Second Latency</b>.
-OME receives <b>RTMP</b>, <b>MPEG-TS</b> (Beta), <b>RTSP</b> (Beta) from encoders and cameras such as [OvenStreamEncoder](https://www.airensoft.com/olk), OBS, XSplit, and more. And, it transmits media source using <b>WebRTC</b>, <b>Low Latency MPEG-DASH</b>, <b>MPEG-DASH</b>, and <b>HLS</b>.
-We also provides [OvenPlayer](https://github.com/AirenSoft/OvenPlayer), Open-Source HTML5 Player.
+OME receives <b>RTMP</b>, <b>MPEG-TS</b> (Beta), and <b>RTSP</b> (Beta) from encoders and cameras such as [OvenStreamEncoder](https://www.airensoft.com/olk), OBS, XSplit, and more. Then, it transmits media sources using <b>WebRTC</b>, <b>Low Latency MPEG-DASH</b>, <b>MPEG-DASH</b>, and <b>HLS</b>.
+We also provide [OvenPlayer](https://github.com/AirenSoft/OvenPlayer), Open-Source HTML5 Player.
 
 ![main](dist/01_OvenMediaEngine.png)
 
@@ -36,6 +36,11 @@ Please click on each banner below for details.
 * Embedded WebRTC Signalling Server \(WebSocket based\)
 * Origin-Edge structure
 * Monitoring
+* Beta
+  * File Recording
+  * RTMP Push Publishing(re-streaming)
+  * Thumbnail
+  * REST API
 * Experiment
   * P2P Traffic Distribution (Only WebRTC)
 
@@ -51,11 +56,49 @@ We have tested OME on the platforms listed below. However, we think it can work 
 
 ## Getting Started
 
-```
-docker run -d \
--p 1935:1935 -p 3333:3333 -p 8080:8080 -p 9000:9000 -p 4000-4005:4000-4005/udp -p 10006-10010:10006-10010/udp \
+### Docker
+
+```bash
+docker run -d \ 
+-p 1935:1935 \
+-p 3333:3333 \
+-p 8080:8080 \
+-p 9000:9000 \
+-p 4000-4005:4000-4005/udp \
+-p 10006-10010:10006-10010/udp \
+--name ovenmediaengine \
 airensoft/ovenmediaengine:latest
 ```
+
+You can also store the configuration files on your host:
+
+```bash
+docker run -d \
+-p 1935:1935 \
+-p 3333:3333 \
+-p 8080:8080 \
+-p 9000:9000 \
+-p 4000-4005:4000-4005/udp \
+-p 10006-10010:10006-10010/udp \
+-v ome-origin-conf:/opt/ovenmediaengine/bin/origin_conf \
+-v ome-edge-conf:/opt/ovenmediaengine/bin/edge_conf \
+--name ovenmediaengine \
+airensoft/ovenmediaengine:latest
+```
+
+The configuration files are now accessible under `/var/lib/docker/volumes/<volume_name>/_data`.
+
+Following the above example, you will find them under `/var/lib/docker/volumes/ome-origin-conf/_data` and `/var/lib/docker/volumes/ome-edge-conf/_data`.
+
+If you want them on a different location, the easiest way is to create links:
+
+```bash
+ln -s /var/lib/docker/volumes/ome-origin-conf/_data/ /my/new/path/to/ome-origin-conf \
+&& ln -s /var/lib/docker/volumes/ome-edge-conf/_data/ /my/new/path/to/ome-edge-conf
+```
+
+### Other Methods
+
 Please read [Getting Started](https://airensoft.gitbook.io/ovenmediaengine/getting-started) chapter in tutorials.
 
 
@@ -63,7 +106,7 @@ Please read [Getting Started](https://airensoft.gitbook.io/ovenmediaengine/getti
 
 Please see our [Guidelines ](CONTRIBUTING.md)and [Rules](CODE_OF_CONDUCT.md).
 
-And we are love to hear use cases. Please tell us your story.
+And we are love to hear use cases. Please tell your story to [contact@airensoft.com](mailto:contact@airensoft.com). The voices of real-contributors are of great help to our project.
 
 [![Contribute](dist/05_UseCases.png)](mailto:contact@airensoft.com)
 
@@ -74,6 +117,8 @@ And we are love to hear use cases. Please tell us your story.
   * Basic Information, FAQ, and Benchmark
 * [OvenMediaEngine Tutorials](https://airensoft.gitbook.io/ovenmediaengine/)
   * Getting Started, Install, and Configuration
+* [OvenMediaEngine Tutorials Source](https://github.com/AirenSoft/OvenMediaEngineDocs)
+  * Please make a pull request for the manual in this project. Thanks for your contribution.
 * Test Player
   * `Without TLS` : [http://demo.ovenplayer.com](http://demo.ovenplayer.com)
   * `Based on TLS` : [https://demo.ovenplayer.com](https://demo.ovenplayer.com)
@@ -84,4 +129,4 @@ And we are love to hear use cases. Please tell us your story.
 
 ## License
 
-OvenMediaEngine is under the [GPLv2 license](LICENSE).
+OvenMediaEngine is licensed under the [GPLv2](LICENSE) or later.

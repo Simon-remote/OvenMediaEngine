@@ -66,6 +66,13 @@ bool SignedPolicy::Process(const ov::String &client_address, const ov::String &r
 		return false;
 	}
 
+	// Check IP
+	if(IsAllowedIP(client_address) == false)
+	{	
+		SetError(ErrCode::UNAUTHORIZED_CLIENT, ov::String::FormatString("%s IP address is not allowed.(Allowed range : %s ~ %s)", client_address.CStr(), _cidr->Begin().CStr(), _cidr->End().CStr()));
+		return false;
+	}
+
 	SetError(ErrCode::PASSED, "Authorized");
 	
 	return true;
@@ -97,7 +104,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 	ov::JsonObject object = ov::Json::Parse(policy_json);
 	if(object.IsNull())
 	{
-		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The policy is in worng format.", policy_json.CStr()));
+		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The policy is in wrong format.", policy_json.CStr()));
 		return false;
 	}
 
@@ -108,7 +115,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 
 	if(jv_url_expire.isNull() || !jv_url_expire.isUInt64())
 	{
-		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("url_expire must be uint32_t and is a required value.", policy_json.CStr()));
+		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("url_expire must be epoch milliseconds as uint64_t and is a required value.", policy_json.CStr()));
 		return false;
 	}
 	else
@@ -118,7 +125,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 		// Policy expired
 		if(_url_expire_epoch_msec < ov::Clock::NowMSec())
 		{
-			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("URL has expired.(now:%u policy_expire:%u) ", ov::Clock::NowMSec(), _url_expire_epoch_msec));
+			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("URL has expired.(now:%llu policy_expire:%llu) ", ov::Clock::NowMSec(), _url_expire_epoch_msec));
 			return false;
 		}
 	}
@@ -130,7 +137,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 		// Policy is not activated yet
 		if(_url_activate_epoch_msec > ov::Clock::NowMSec())
 		{
-			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The URL has not yet been activated.(now:%u policy_activate:%u) ", ov::Clock::NowMSec(), _url_activate_epoch_msec));
+			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The URL has not yet been activated.(now:%llu policy_activate:%llu) ", ov::Clock::NowMSec(), _url_activate_epoch_msec));
 			return false;
 		}
 	}
@@ -142,9 +149,13 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 	
 	if(!jv_allow_ip.isNull() && jv_allow_ip.isString())
 	{
-		_allow_ip_cidr = jv_stream_expire.asCString();
-
-		//TODO(Getroot) : Check if client address is allowed
+		_allow_ip_cidr = jv_allow_ip.asString().c_str();
+		_cidr = ov::CIDR::Parse(_allow_ip_cidr);
+		if(_cidr == nullptr)
+		{
+			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("allow_ip:%s in SignedPolicy is an invalid CIDR.", _allow_ip_cidr.CStr()));
+			return false;
+		}
 	}
 
 	return true;
@@ -200,4 +211,26 @@ uint64_t SignedPolicy::GetStreamExpireEpochSec() const
 const ov::String& SignedPolicy::GetAllowIpCidr() const
 {
 	return _allow_ip_cidr;
+}
+
+bool SignedPolicy::IsAllowedIP(const ov::String &ip_addr) const
+{
+	// Do not have IP policy
+	if(_cidr == nullptr)
+	{
+		return true;
+	}
+
+	return _cidr->CheckIP(ip_addr);
+}
+
+bool SignedPolicy::GetCIDRRange(ov::String &begin, ov::String &end) const
+{
+	if(_cidr == nullptr)
+	{
+		return false;
+	}
+	begin = _cidr->Begin();
+	end = _cidr->End();
+	return true;
 }

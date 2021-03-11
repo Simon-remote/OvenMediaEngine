@@ -22,8 +22,10 @@ public:
 	static std::shared_ptr<RtcStream> Create(const std::shared_ptr<pub::Application> application,
 	                                         const info::Stream &info,
 	                                         uint32_t worker_count);
+
 	explicit RtcStream(const std::shared_ptr<pub::Application> application,
-	                   const info::Stream &info);
+	                   const info::Stream &info,
+					   uint32_t worker_count);
 	~RtcStream() final;
 
 	std::shared_ptr<SessionDescription> GetSessionDescription();
@@ -56,11 +58,15 @@ private:
 	std::shared_ptr<Certificate> _certificate;
 
 	// Track ID, Packetizer
+	std::shared_mutex _packetizers_lock;
 	std::map<uint32_t, std::shared_ptr<RtpPacketizer>> _packetizers;
 
 	// Origin payload type, RtpHistory
 	std::map<uint8_t, std::shared_ptr<RtpHistory>> _rtp_history_map;
 
 	std::shared_ptr<mon::StreamMetrics>		_stream_metrics;
-	bool _support_rtx = true;
+
+	bool _rtx_enabled = true;
+	bool _ulpfec_enabled = true;
+	uint32_t _worker_count = 0;
 };

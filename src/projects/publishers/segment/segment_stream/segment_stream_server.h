@@ -26,10 +26,13 @@ public:
 	SegmentStreamServer();
 	virtual ~SegmentStreamServer() = default;
 
+	// thread_count: A thread count of SegmentWorkerManager
+	// worker_count: A thread count of socket pool
 	bool Start(
 		const ov::SocketAddress *address,
 		const ov::SocketAddress *tls_address,
-		int thread_count);
+		int thread_count,
+		int worker_count);
 	bool Stop();
 
 	bool AddObserver(const std::shared_ptr<SegmentStreamObserver> &observer);
@@ -37,7 +40,7 @@ public:
 
 	bool Disconnect(const ov::String &app_name, const ov::String &stream_name);
 
-	void SetCrossDomain(const std::vector<cfg::cmn::Url> &url_list);
+	void SetCrossDomain(const std::vector<ov::String> &url_list);
 
 	virtual PublisherType GetPublisherType() const noexcept = 0;
 	virtual const char *GetPublisherName() const noexcept = 0;
@@ -71,6 +74,8 @@ protected:
 												 SegmentType segment_type) = 0;
 
 	bool UrlExistCheck(const std::vector<ov::String> &url_list, const ov::String &check_url);
+
+	bool IncreaseBytesOut(const std::shared_ptr<HttpClient> &client, size_t sent_bytes);
 
 protected:
 	std::shared_ptr<HttpServer> _http_server;

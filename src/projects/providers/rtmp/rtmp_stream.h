@@ -67,7 +67,8 @@ namespace pvd
 
 
 		// Send messages
-		bool SendData(int data_size, uint8_t *data);
+		bool SendData(const std::shared_ptr<const ov::Data> &data);
+		bool SendData(const void *data, size_t data_size);
 		bool SendMessagePacket(std::shared_ptr<RtmpMuxMessageHeader> &message_header, std::shared_ptr<std::vector<uint8_t>> &data);
 		bool SendAcknowledgementSize(uint32_t acknowledgement_traffic);
 
@@ -75,6 +76,7 @@ namespace pvd
 		bool SendWindowAcknowledgementSize(uint32_t size);
 		bool SendSetPeerBandwidth(uint32_t bandwidth);
 		bool SendStreamBegin();
+		bool SendStreamEnd();
 		bool SendAcknowledgementSize();
 		bool SendAmfCommand(std::shared_ptr<RtmpMuxMessageHeader> &message_header, AmfDocument &document);
 		bool SendAmfConnectResult(uint32_t chunk_stream_id, double transaction_id, double object_encoding);
@@ -164,5 +166,7 @@ namespace pvd
 		uint32_t _previous_last_audio_timestamp = 0;
 		uint32_t _video_frame_count = 0;
 		uint32_t _audio_frame_count = 0;
+
+		bool _negative_cts_detected = false;
 	};
 }

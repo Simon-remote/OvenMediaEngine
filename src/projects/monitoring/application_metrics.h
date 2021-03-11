@@ -7,6 +7,7 @@
 #include "base/info/info.h"
 #include "common_metrics.h"
 #include "stream_metrics.h"
+#include "reserved_stream_metrics.h"
 #include <shared_mutex>
 
 namespace mon
@@ -47,10 +48,15 @@ namespace mon
 
 		bool OnStreamCreated(const info::Stream &stream);
 		bool OnStreamDeleted(const info::Stream &stream);
-
-		std::map<uint32_t, std::shared_ptr<StreamMetrics>> GetStreamMetricsList();
-
+		std::map<uint32_t, std::shared_ptr<StreamMetrics>> GetStreamMetricsMap();
 		std::shared_ptr<StreamMetrics> GetStreamMetrics(const info::Stream &stream);
+
+		bool OnStreamReserved(ProviderType who, const ov::Url &stream_uri, const ov::String &stream_name);
+		bool OnStreamCanceled(const ov::Url &stream_uri); // Reservation Canceled
+		std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> GetReservedStreamMetricsMap();
+		// TODO: To prevent side-effects from occurring, the value returned must also be changed to const
+		// For example: std::map<uint32_t, std::shared_ptr<const ReservedStreamMetrics>>
+		std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> GetReservedStreamMetricsMap() const;
 
 		// Overriding from CommonMetrics 
 		void IncreaseBytesIn(uint64_t value) override;
@@ -60,7 +66,10 @@ namespace mon
 
 	private:
 		std::shared_ptr<HostMetrics> _host_metrics;
-		std::shared_mutex _map_guard;
+		std::shared_mutex _streams_guard;
 		std::map<uint32_t, std::shared_ptr<StreamMetrics>> _streams;
+
+		mutable std::shared_mutex _reserved_streams_guard;
+		std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> _reserved_streams;
 	};
 }  // namespace mon

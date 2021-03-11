@@ -10,8 +10,7 @@
 
 #include <unistd.h>
 
-#define OV_LOG_TAG "TranscodeCodec"
-
+#include "../transcode_private.h"
 
 OvenCodecImplAvcodecEncHEVC::~OvenCodecImplAvcodecEncHEVC()
 {
@@ -30,7 +29,6 @@ bool OvenCodecImplAvcodecEncHEVC::Configure(std::shared_ptr<TranscodeContext> co
 	}
 
 	auto codec_id = GetCodecID();
-
 	AVCodec *codec = ::avcodec_find_encoder(codec_id);
 
 	if (codec == nullptr)
@@ -68,12 +66,12 @@ bool OvenCodecImplAvcodecEncHEVC::Configure(std::shared_ptr<TranscodeContext> co
 	AVRational codec_timebase = ::av_inv_q(::av_mul_q(::av_d2q(_output_context->GetFrameRate(), AV_TIME_BASE), (AVRational){_context->ticks_per_frame, 1}));
 	_context->time_base = codec_timebase;
 
-	_context->gop_size = _context->framerate.num / _context->framerate.den;
+	// _context->gop_size = _context->framerate.num / _context->framerate.den;
 	_context->max_b_frames = 0;
 	_context->pix_fmt = AV_PIX_FMT_YUV420P;
 	_context->width = _output_context->GetVideoWidth();
 	_context->height = _output_context->GetVideoHeight();
-	_context->thread_count = 2;
+	_context->thread_count = 0;
 
 	// 인코딩 품질 및 브라우저 호환성
 	// For browser compatibility
@@ -83,19 +81,15 @@ bool OvenCodecImplAvcodecEncHEVC::Configure(std::shared_ptr<TranscodeContext> co
 	// 인코딩 성능
 	::av_opt_set(_context->priv_data, "preset", "veryfast", 0);
 
-	// 인코딩 딜레이
+	// Encoding Delay
 	::av_opt_set(_context->priv_data, "tune", "zerolatency", 0);
-/*
-	// 인코딩 딜레이에서 sliced-thread 옵션 제거. MAC 환경에서 브라우저 호환성
-	::av_opt_set(_context->priv_data, "x264opts", "bframes=0:sliced-threads=0:b-adapt=1:no-scenecut:keyint=30:min-keyint=30", 0);
-	// ::av_opt_set(_context->priv_data, "x264opts", "bframes=0:sliced-threads=0:b-adapt=1", 0);
 
-	// CBR 옵션 / bitrate는 kbps 단위 / *문제는 MAC 크롬에서 재생이 안된다. 그래서 maxrate 값만 지정해줌.
-	// x264opts.AppendFormat(":nal-hrd=cbr:force-cfr=1:bitrate=%d:vbv-maxrate=%d:vbv-bufsize=%d:", _context->bit_rate/1000,  _context->bit_rate/1000,  _context->bit_rate/1000);
-*/
+	// Keyframe Intervasl
+	::av_opt_set(_context->priv_data, "x265-params", ov::String::FormatString("pass=1:bframes=0:no-scenecut=1:keyint=%.0f:min-keyint=%.0f:level-idc=4:no-open-gop=1", _output_context->GetFrameRate(), _output_context->GetFrameRate()).CStr(), 0);
+
 	if (::avcodec_open2(_context, codec, nullptr) < 0)
 	{
-		logte("Could not open codec: %s (%d)", ::avcodec_get_name(codec_id), codec_id);
+		logte("Could not open codec. %s (%d)", ::avcodec_get_name(codec_id), codec_id);
 		return false;
 	}
 
@@ -105,6 +99,7 @@ bool OvenCodecImplAvcodecEncHEVC::Configure(std::shared_ptr<TranscodeContext> co
 		_kill_flag = false;
 
 		_thread_work = std::thread(&OvenCodecImplAvcodecEncHEVC::ThreadEncode, this);
+		pthread_setname_np(_thread_work.native_handle(), "EncHEVC");
 	}
 	catch (const std::system_error &e)
 	{
@@ -120,7 +115,8 @@ void OvenCodecImplAvcodecEncHEVC::Stop()
 {
 	_kill_flag = true;
 
-	_queue_event.Notify();
+	_input_buffer.Stop();
+	_output_buffer.Stop();
 
 	if (_thread_work.joinable())
 	{
@@ -131,22 +127,13 @@ void OvenCodecImplAvcodecEncHEVC::Stop()
 
 void OvenCodecImplAvcodecEncHEVC::ThreadEncode()
 {
-	while(!_kill_flag)
+	while (!_kill_flag)
 	{
-		_queue_event.Wait();
-
-		std::unique_lock<std::mutex> mlock(_mutex);
-
-		// 스레드 종료와 같이 큐에 데이터가 없는 경우에는 다시 대기를 한다
-		if (_input_buffer.empty())
-		{
+		auto obj = _input_buffer.Dequeue();
+		if (obj.has_value() == false)
 			continue;
-		}
 
-		auto frame = std::move(_input_buffer.front());
-		_input_buffer.pop_front();
-
-		mlock.unlock();
+		auto frame = std::move(obj.value());
 
 		///////////////////////////////////////////////////
 		// Request frame encoding to codec
@@ -162,6 +149,8 @@ void OvenCodecImplAvcodecEncHEVC::ThreadEncode()
 		_frame->linesize[0] = frame->GetStride(0);
 		_frame->linesize[1] = frame->GetStride(1);
 		_frame->linesize[2] = frame->GetStride(2);
+
+		// logte("hevc queue : %d / %lld", _input_buffer.size(), _frame->pts);
 
 		if (::av_frame_get_buffer(_frame, 32) < 0)
 		{
@@ -182,7 +171,6 @@ void OvenCodecImplAvcodecEncHEVC::ThreadEncode()
 		::memcpy(_frame->data[2], frame->GetBuffer(2), frame->GetBufferSize(2));
 
 		int ret = ::avcodec_send_frame(_context, _frame);
-		// int ret = 0;
 		::av_frame_unref(_frame);
 
 		if (ret < 0)
@@ -190,16 +178,13 @@ void OvenCodecImplAvcodecEncHEVC::ThreadEncode()
 			logte("Error sending a frame for encoding : %d", ret);
 
 			// Failure to send frame to encoder. Wait and put it back in. But it doesn't happen as often as possible.
-			std::unique_lock<std::mutex> mlock(_mutex);
-			_input_buffer.push_front(std::move(frame));
-			mlock.unlock();
-			_queue_event.Notify();
+			// _input_buffer.Enqueue(std::move(frame));
 		}
 
 		///////////////////////////////////////////////////
 		// The encoded packet is taken from the codec.
 		///////////////////////////////////////////////////
-		while(true)
+		while (true)
 		{
 			// Check frame is availble
 			int ret = ::avcodec_receive_packet(_context, _packet);
@@ -226,40 +211,38 @@ void OvenCodecImplAvcodecEncHEVC::ThreadEncode()
 			{
 				// Encoded packet is ready
 				auto packet_buffer = std::make_shared<MediaPacket>(
-										cmn::MediaType::Video, 
-										0, 
-										_packet->data, 
-										_packet->size, 
-										_packet->pts, 
-										_packet->dts, 
-										-1L, 
-										(_packet->flags & AV_PKT_FLAG_KEY) ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag);
+					cmn::MediaType::Video,
+					0,
+					_packet->data,
+					_packet->size,
+					_packet->pts,
+					_packet->dts,
+					-1L,
+					(_packet->flags & AV_PKT_FLAG_KEY) ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag);
 				packet_buffer->SetBitstreamFormat(cmn::BitstreamFormat::H265_ANNEXB);
 				packet_buffer->SetPacketType(cmn::PacketType::NALU);
 
+				// logte("SendOutputBuffer");
 				SendOutputBuffer(std::move(packet_buffer));
 			}
 		}
 	}
 }
 
-
 std::shared_ptr<MediaPacket> OvenCodecImplAvcodecEncHEVC::RecvBuffer(TranscodeResult *result)
 {
-	std::unique_lock<std::mutex> mlock(_mutex);
-	if(!_output_buffer.empty())
+	if (!_output_buffer.IsEmpty())
 	{
 		*result = TranscodeResult::DataReady;
 
-		auto packet = std::move(_output_buffer.front());
-		_output_buffer.pop_front();
-
-		return std::move(packet);
+		auto obj = _output_buffer.Dequeue();
+		if (obj.has_value())
+		{
+			return std::move(obj.value());
+		}
 	}
 
 	*result = TranscodeResult::NoData;
 
 	return nullptr;
-
 }
-

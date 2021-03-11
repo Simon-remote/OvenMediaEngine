@@ -42,6 +42,7 @@ private:
 	void SessionController();
 	void StartSession(std::shared_ptr<FileSession> session);
 	void StopSession(std::shared_ptr<FileSession> session);
+	void SplitSession(std::shared_ptr<FileSession> session);
 	
 	void WorkerThread();
 	bool _stop_thread_flag;
@@ -53,11 +54,14 @@ private:
 public:
 	enum FilePublisherStatusCode {
 		Success,
-		Failure
+		FailureInvalidParameter,
+		FailureDupulicateKey,
+		FailureNotExist,
+		FailureUnknown
 	};
 	
-	std::shared_ptr<ov::Error> RecordStart(const info::VHostAppName &vhost_app_name, const std::shared_ptr<info::Record> &record);
-	std::shared_ptr<ov::Error> RecordStop(const info::VHostAppName &vhost_app_name, const std::shared_ptr<info::Record> &record);
+	std::shared_ptr<ov::Error> RecordStart(const info::VHostAppName &vhost_app_name, const std::shared_ptr<info::Record> record);
+	std::shared_ptr<ov::Error> RecordStop(const info::VHostAppName &vhost_app_name, const std::shared_ptr<info::Record> record);
 	std::shared_ptr<ov::Error> GetRecords(const info::VHostAppName &vhost_app_name, std::vector<std::shared_ptr<info::Record>> &record_list);
 
 };

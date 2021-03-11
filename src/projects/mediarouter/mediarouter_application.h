@@ -8,20 +8,18 @@
 //==============================================================================
 #pragma once
 
+#include <config/items/items.h>
+
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <vector>
-#include <algorithm>
 
-#include "base/mediarouter/media_route_application_observer.h"
 #include "base/mediarouter/media_route_application_connector.h"
 #include "base/mediarouter/media_route_application_interface.h"
+#include "base/mediarouter/media_route_application_observer.h"
 #include "base/mediarouter/media_route_interface.h"
-
-
 #include "mediarouter_stream.h"
-
-#include <config/items/items.h>
 
 class ApplicationInfo;
 class Stream;
@@ -36,17 +34,19 @@ public:
 
 	explicit MediaRouteApplication(
 		const info::Application &application_info);
-	
+
 	~MediaRouteApplication() override;
 
 public:
 	bool Start();
 	bool Stop();
 
-	volatile bool _kill_flag;
-	std::thread _thread;
 
 public:
+	//////////////////////////////////////////////////////////////////////
+	// Interface for Application Binding
+	//////////////////////////////////////////////////////////////////////
+
 	// Register/unregister connector from provider
 	bool RegisterConnectorApp(
 		std::shared_ptr<MediaRouteApplicationConnector> connector);
@@ -62,39 +62,50 @@ public:
 		std::shared_ptr<MediaRouteApplicationObserver> observer);
 
 public:
-
-	bool OnCreateStream(
+	//////////////////////////////////////////////////////////////////////
+	// Interface for Stream and MediaPacket
+	//////////////////////////////////////////////////////////////////////
+	bool OnStreamCreated(
 		const std::shared_ptr<MediaRouteApplicationConnector> &app_conn,
 		const std::shared_ptr<info::Stream> &stream) override;
 
-	bool NotifyCreateStream(
-		const std::shared_ptr<info::Stream> &stream_info, 
-		MediaRouteApplicationConnector::ConnectorType connector_type);
-
-	bool OnDeleteStream(
-		const std::shared_ptr<MediaRouteApplicationConnector> &app_conn, 
+	bool OnStreamDeleted(
+		const std::shared_ptr<MediaRouteApplicationConnector> &app_conn,
 		const std::shared_ptr<info::Stream> &stream) override;
 
-	bool NotifyDeleteStream(
-		const std::shared_ptr<info::Stream> &stream_info, 
-		const MediaRouteApplicationConnector::ConnectorType connector_type);
-
-	bool OnReceiveBuffer(
+	bool OnPacketReceived(
 		const std::shared_ptr<MediaRouteApplicationConnector> &app_conn,
 		const std::shared_ptr<info::Stream> &stream,
 		const std::shared_ptr<MediaPacket> &packet) override;
 
-private:
-	bool ReuseIncomingStream(const std::shared_ptr<info::Stream> &stream_info);
-	bool CreateIncomingStream(const std::shared_ptr<info::Stream> &stream_info);
-	bool CreateOutgoingStream(const std::shared_ptr<info::Stream> &stream_info);
+	bool IsExistingInboundStream(ov::String stream_name) override;
 
-	bool DeleteIncomingStream(const std::shared_ptr<info::Stream> &stream_info);
-	bool DeleteOutgoingStream(const std::shared_ptr<info::Stream> &stream_info);
-
-	std::shared_ptr<MediaRouteStream> GetStream(uint8_t indicator, uint32_t stream_id);
 
 public:
+	bool NotifyStreamCreate(
+		const std::shared_ptr<info::Stream> &stream_info,
+		MediaRouteApplicationConnector::ConnectorType connector_type);
+
+	bool NotifyStreamPrepared(std::shared_ptr<MediaRouteStream> &stream);
+	
+	bool NotifyStreamDelete(
+		const std::shared_ptr<info::Stream> &stream_info,
+		const MediaRouteApplicationConnector::ConnectorType connector_type);
+
+private:
+	std::shared_ptr<MediaRouteStream> CreateInboundStream(const std::shared_ptr<info::Stream> &stream_info);
+	std::shared_ptr<MediaRouteStream> CreateOutboundStream(const std::shared_ptr<info::Stream> &stream_info);
+
+	bool DeleteInboundStream(const std::shared_ptr<info::Stream> &stream_info);
+	bool DeleteOutboundStream(const std::shared_ptr<info::Stream> &stream_info);
+
+	// std::shared_ptr<MediaRouteStream> GetStream(uint8_t indicator, uint32_t stream_id);
+	std::shared_ptr<MediaRouteStream> GetInboundStream(uint32_t stream_id);
+	std::shared_ptr<MediaRouteStream> GetInboundStreamByName(const ov::String stream_name);
+	std::shared_ptr<MediaRouteStream> GetOutboundStream(uint32_t stream_id);
+	std::shared_ptr<MediaRouteStream> GetOutboundStreamByName(const ov::String stream_name);
+
+private:
 	// Application information from configuration file
 	const info::Application _application_info;
 
@@ -107,40 +118,26 @@ public:
 	std::shared_mutex _observers_lock;
 
 	// Information of MediaStream instance
-	// Incoming Streams
+	// Inbound Streams
 	// Key : Stream.id
-	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _streams_incoming;
+	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _inbound_streams;
 
-	// Outgoing Streams
+	// Outbound Streams
 	// Key : Stream.id
-	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _streams_outgoing;
-	
+	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _outbound_streams;
 	std::shared_mutex _streams_lock;
 
+private:
+	void InboundWorkerThread(uint32_t worker_id);
+	void OutboundWorkerThread(uint32_t worker_id);
 
-public:
-	void MessageLooper();
+	volatile bool _kill_flag;
+	std::vector<std::thread> _inbound_threads;
+	std::vector<std::thread> _outbound_threads;
 
-	class BufferIndicator
-	{
-	public:
-		enum BufferIndicatorEnum : uint8_t 
-		{
-			BUFFER_INDICATOR_NONE_STREAM = 0,
-			BUFFER_INDICATOR_INCOMING_STREAM,
-			BUFFER_INDICATOR_OUTGOING_STREAM
-		};
+	uint32_t _max_worker_thread_count;
 
-		explicit BufferIndicator(uint8_t inout, uint32_t stream_id)
-		{
-			_inout = inout;
-			_stream_id = stream_id;
-		}
-
-		uint8_t _inout;
-		uint32_t _stream_id;
-	};
-
-protected:
-	ov::Queue<std::shared_ptr<BufferIndicator>> _indicator;
+private:
+	std::vector<std::shared_ptr<ov::Queue<std::shared_ptr<MediaRouteStream>>>> _inbound_stream_indicator;
+	std::vector<std::shared_ptr<ov::Queue<std::shared_ptr<MediaRouteStream>>>> _outbound_stream_indicator;
 };

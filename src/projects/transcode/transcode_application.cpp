@@ -7,12 +7,17 @@
 //
 //==============================================================================
 
-#include <iostream>
-#include <unistd.h>
-
 #include "transcode_application.h"
 
-#define OV_LOG_TAG "TranscodeApplication"
+#include <unistd.h>
+
+#include <iostream>
+
+#include "transcode_private.h"
+
+#define MIN_APPLICATION_WORKER_COUNT 1
+#define MAX_APPLICATION_WORKER_COUNT 72
+#define MAX_QUEUE_SIZE 100
 
 std::shared_ptr<TranscodeApplication> TranscodeApplication::Create(const info::Application &application_info)
 {
@@ -22,58 +27,36 @@ std::shared_ptr<TranscodeApplication> TranscodeApplication::Create(const info::A
 }
 
 TranscodeApplication::TranscodeApplication(const info::Application &application_info)
-	: _application_info(application_info),
-	_indicator(nullptr, 100)
+	: _application_info(application_info)
 {
-	// set alias
-	_indicator.SetAlias(ov::String::FormatString("%s - TranscodeApplication Indicator Queue", _application_info.GetName().CStr()));
+	logti("Created transcoder application. app(%s)", application_info.GetName().CStr());
 }
 
 TranscodeApplication::~TranscodeApplication()
 {
-	logtd("Destroyed transcode application.");
+	logti("Transcoder application has been destroyed. app(%s)", _application_info.GetName().CStr());
 }
 
 bool TranscodeApplication::Start()
 {
-	try
-	{
-		_kill_flag = false;
-		_thread_looptask = std::thread(&TranscodeApplication::MessageLooper, this);
-	}
-	catch (const std::system_error &e)
-	{
-		_kill_flag = true;
-		logte("Failed to start transcode stream thread");
-		return false;
-	}
-
 	return true;
 }
 
 bool TranscodeApplication::Stop()
 {
-	_kill_flag = true;
-	
-	if (_thread_looptask.joinable())
+	for (const auto &it : _streams)
 	{
-		_thread_looptask.join();
-	}
-
-	std::unique_lock<std::mutex> lock(_mutex);
-
-	for(const auto &x : _streams)
-	{
-		auto stream = x.second;
+		auto stream = it.second;
 		stream->Stop();
 	}
-
 	_streams.clear();
+
+	logtd("Transcoder application has been stopped. app(%s)", _application_info.GetName().CStr());
 
 	return true;
 }
 
-bool TranscodeApplication::OnCreateStream(const std::shared_ptr<info::Stream> &stream_info)
+bool TranscodeApplication::OnStreamCreated(const std::shared_ptr<info::Stream> &stream_info)
 {
 	std::unique_lock<std::mutex> lock(_mutex);
 
@@ -83,7 +66,7 @@ bool TranscodeApplication::OnCreateStream(const std::shared_ptr<info::Stream> &s
 		return false;
 	}
 
-	if(stream->Start() == false)
+	if (stream->Start() == false)
 	{
 		return false;
 	}
@@ -93,7 +76,7 @@ bool TranscodeApplication::OnCreateStream(const std::shared_ptr<info::Stream> &s
 	return true;
 }
 
-bool TranscodeApplication::OnDeleteStream(const std::shared_ptr<info::Stream> &stream_info)
+bool TranscodeApplication::OnStreamDeleted(const std::shared_ptr<info::Stream> &stream_info)
 {
 	std::unique_lock<std::mutex> lock(_mutex);
 
@@ -113,6 +96,16 @@ bool TranscodeApplication::OnDeleteStream(const std::shared_ptr<info::Stream> &s
 	return true;
 }
 
+bool TranscodeApplication::OnStreamPrepared(const std::shared_ptr<info::Stream> &stream)
+{
+	std::unique_lock<std::mutex> lock(_mutex);
+
+	// Do nothing
+	
+	// logtw("Called OnStreamParsed. *Please delete this log after checking.*");
+	
+	return true;
+}
 
 bool TranscodeApplication::OnSendFrame(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaPacket> &packet)
 {
@@ -128,46 +121,4 @@ bool TranscodeApplication::OnSendFrame(const std::shared_ptr<info::Stream> &stre
 	auto stream = stream_bucket->second;
 
 	return stream->Push(packet);
-}
-
-
-bool TranscodeApplication::AppendIndicator(std::shared_ptr<TranscodeStream> stream, IndicatorQueueType queue_type)
-{
-	_indicator.Enqueue( std::make_shared<BufferIndicator>(stream,queue_type) );
-
-	return true;
-}
-
-void TranscodeApplication::MessageLooper()
-{
-	while (!_kill_flag)
-	{
-		auto indicator_ref = _indicator.Dequeue(10);
-		if (indicator_ref.has_value() == false)
-		{
-			// logti("There is no indicator"); 
-			continue;
-		}
-
-		auto indicator = indicator_ref.value();
-
-		switch(indicator->_queue_type)
-		{
-			case BUFFER_INDICATOR_INPUT_PACKETS:
-				indicator->_stream->DoInputPackets();
-				break;
-
-			case BUFFER_INDICATOR_DECODED_FRAMES:
-				indicator->_stream->DoDecodedFrames();
-				break;
-
-			case BUFFER_INDICATOR_FILTERED_FRAMES:
-				indicator->_stream->DoFilteredFrames();
-				break;
-			default:
-				break;
-		}
-
-		// logti("Append Indicator %p %d %d", indicator->_stream, indicator->_queue_type, _indicator.Size());
-	}
 }

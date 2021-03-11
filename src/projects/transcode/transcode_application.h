@@ -9,17 +9,19 @@
 
 #pragma once
 
+#include <base/ovlibrary/ovlibrary.h>
+
+#include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <vector>
-#include <algorithm>
 #include <thread>
-#include "base/mediarouter/media_route_application_observer.h"
-#include "base/mediarouter/media_route_application_connector.h"
-#include "base/mediarouter/media_buffer.h"
+#include <vector>
+
 #include "base/info/stream.h"
+#include "base/mediarouter/media_buffer.h"
+#include "base/mediarouter/media_route_application_connector.h"
+#include "base/mediarouter/media_route_application_observer.h"
 #include "transcode_stream.h"
-#include <base/ovlibrary/ovlibrary.h>
 
 class TranscodeApplication : public MediaRouteApplicationConnector, public MediaRouteApplicationObserver
 {
@@ -43,51 +45,18 @@ public:
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////
-	// MediaRouteApplicationObserver Implementation 
+	// MediaRouteApplicationObserver Implementation
 	////////////////////////////////////////////////////////////////////////////////////////////////
-	bool OnCreateStream(const std::shared_ptr<info::Stream> &stream) override;
-	bool OnDeleteStream(const std::shared_ptr<info::Stream> &stream) override;
+	bool OnStreamCreated(const std::shared_ptr<info::Stream> &stream) override;
+	bool OnStreamDeleted(const std::shared_ptr<info::Stream> &stream) override;
+	bool OnStreamPrepared(const std::shared_ptr<info::Stream> &stream) override;
 
 	bool OnSendFrame(const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) override;
 
 private:
 	const info::Application _application_info;
 
-
-
 private:
 	std::map<int32_t, std::shared_ptr<TranscodeStream>> _streams;
 	std::mutex _mutex;
-
-	volatile bool _kill_flag;
-	void MessageLooper();
-	std::thread _thread_looptask;
-
-
-public:
-	enum IndicatorQueueType {
-		BUFFER_INDICATOR_INPUT_PACKETS = 0,
-		BUFFER_INDICATOR_DECODED_FRAMES,
-		BUFFER_INDICATOR_FILTERED_FRAMES
-	};	
-	
-	// Indicator
-	bool AppendIndicator(std::shared_ptr<TranscodeStream> stream, IndicatorQueueType _queue_type);
-
-	class BufferIndicator
-	{
-	public:
-		explicit BufferIndicator(std::shared_ptr<TranscodeStream> stream, IndicatorQueueType queue_type)
-		{
-			_stream = stream;
-			_queue_type = queue_type;
-		}
-
-		std::shared_ptr<TranscodeStream> _stream;
-		IndicatorQueueType _queue_type;
-	};
-	
-private:
-	ov::Queue<std::shared_ptr<BufferIndicator>> _indicator;
 };
-

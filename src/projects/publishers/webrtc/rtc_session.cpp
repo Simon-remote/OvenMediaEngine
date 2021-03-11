@@ -9,7 +9,7 @@
 
 #include <utility>
 
-std::shared_ptr<RtcSession> RtcSession::Create(const std::shared_ptr<WebRtcPublisher> &publihser,
+std::shared_ptr<RtcSession> RtcSession::Create(const std::shared_ptr<WebRtcPublisher> &publisher,
 											   const std::shared_ptr<pub::Application> &application,
                                                const std::shared_ptr<pub::Stream> &stream,
                                                const std::shared_ptr<const SessionDescription> &offer_sdp,
@@ -19,7 +19,7 @@ std::shared_ptr<RtcSession> RtcSession::Create(const std::shared_ptr<WebRtcPubli
 {
 	// Session Id of the offer sdp is unique value
 	auto session_info = info::Session(*std::static_pointer_cast<info::Stream>(stream), offer_sdp->GetSessionId());
-	auto session = std::make_shared<RtcSession>(session_info, publihser, application, stream, offer_sdp, peer_sdp, ice_port, ws_client);
+	auto session = std::make_shared<RtcSession>(session_info, publisher, application, stream, offer_sdp, peer_sdp, ice_port, ws_client);
 	if(!session->Start())
 	{
 		return nullptr;
@@ -28,7 +28,7 @@ std::shared_ptr<RtcSession> RtcSession::Create(const std::shared_ptr<WebRtcPubli
 }
 
 RtcSession::RtcSession(const info::Session &session_info,
-					   const std::shared_ptr<WebRtcPublisher> &publihser,
+					   const std::shared_ptr<WebRtcPublisher> &publisher,
 					   const std::shared_ptr<pub::Application> &application,
 					   const std::shared_ptr<pub::Stream> &stream,
 					   const std::shared_ptr<const SessionDescription> &offer_sdp,
@@ -37,7 +37,7 @@ RtcSession::RtcSession(const info::Session &session_info,
 					   const std::shared_ptr<WebSocketClient> &ws_client)
 	: Session(session_info, application, stream)
 {
-	_publisher = publihser;
+	_publisher = publisher;
 	_offer_sdp = offer_sdp;
 	_peer_sdp = peer_sdp;
 	_ice_port = ice_port;
@@ -52,12 +52,13 @@ RtcSession::~RtcSession()
 
 bool RtcSession::Start()
 {
+	// start and stop must be called independently.
+	std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+
 	if(GetState() != SessionState::Ready)
 	{
 		return false;
 	}
-
-	auto session = std::static_pointer_cast<pub::Session>(GetSharedPtr());
 
 	auto offer_media_desc_list = _offer_sdp->GetMediaList();
 	auto peer_media_desc_list = _peer_sdp->GetMediaList();
@@ -92,15 +93,7 @@ bool RtcSession::Start()
 		}
 		else
 		{
-			// "H.264 + FEC" is of lower quality. 
-			// This is because VP8 solves this with PictureID, 
-			// but H.264 recognizes ULPFEC packets as also packets constituting a frame.
-			// So when the first payload codec is H.264, we don't use FEC.
-			if(first_payload->GetCodec() == PayloadAttr::SupportCodec::H264)
-			{
-				_video_payload_type = first_payload->GetId();
-			}
-			else if(peer_media_desc->GetPayload(RED_PAYLOAD_TYPE))
+			if(peer_media_desc->GetPayload(RED_PAYLOAD_TYPE))
 			{
 				_video_payload_type = RED_PAYLOAD_TYPE;
 				_red_block_pt = first_payload->GetId();
@@ -116,7 +109,7 @@ bool RtcSession::Start()
 			{
 				if(payload->GetCodec() == PayloadAttr::SupportCodec::RTX)
 				{
-					_use_rtx_flag = true;
+					_rtx_enabled = true;
 					_video_rtx_ssrc = offer_media_desc->GetRtxSsrc();
 
 					// Now, no RTCP with RTX
@@ -129,16 +122,16 @@ bool RtcSession::Start()
 		}
 	}
 
-	_rtp_rtcp = std::make_shared<RtpRtcp>((uint32_t)pub::SessionNodeType::Rtp, session, ssrc_list);
+	_rtp_rtcp = std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr(), ssrc_list);
 
-	_srtp_transport = std::make_shared<SrtpTransport>((uint32_t)pub::SessionNodeType::Srtp, session);
+	_srtp_transport = std::make_shared<SrtpTransport>();
 
-	_dtls_transport = std::make_shared<DtlsTransport>((uint32_t)pub::SessionNodeType::Dtls, session);
+	_dtls_transport = std::make_shared<DtlsTransport>();
 	std::shared_ptr<RtcApplication> application = std::static_pointer_cast<RtcApplication>(GetApplication());
 	_dtls_transport->SetLocalCertificate(application->GetCertificate());
 	_dtls_transport->StartDTLS();
 
-	_dtls_ice_transport = std::make_shared<DtlsIceTransport>((uint32_t)pub::SessionNodeType::Ice, session, _ice_port);
+	_dtls_ice_transport = std::make_shared<DtlsIceTransport>(GetId(), _ice_port);
 
 	// Connect nodes
 	_rtp_rtcp->RegisterUpperNode(nullptr);
@@ -159,6 +152,9 @@ bool RtcSession::Start()
 
 bool RtcSession::Stop()
 {
+	// start and stop must be called independently.
+	std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+
 	logtd("Stop session. Peer sdp session id : %u", GetOfferSDP()->GetSessionId());
 
 	if(GetState() != SessionState::Started && GetState() != SessionState::Stopping)
@@ -215,13 +211,19 @@ const std::shared_ptr<WebSocketClient>& RtcSession::GetWSClient()
 void RtcSession::OnPacketReceived(const std::shared_ptr<info::Session> &session_info,
 								const std::shared_ptr<const ov::Data> &data)
 {
+	//It must not be called during start and stop.
+	std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
+
 	_received_bytes += data->GetLength();
 	// ICE -> DTLS -> SRTP | SCTP -> RTP|RTCP
-	_dtls_ice_transport->OnDataReceived(pub::SessionNodeType::None, data);
+	_dtls_ice_transport->OnDataReceived(NodeType::Unknown, data);
 }
 
 bool RtcSession::SendOutgoingData(const std::any &packet)
 {
+	//It must not be called during start and stop.
+	std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
+
 	if(GetState() != SessionState::Started)
 	{
 		return false;
@@ -230,7 +232,7 @@ bool RtcSession::SendOutgoingData(const std::any &packet)
 	// Check expired time
 	if(_session_expired_time != 0 && _session_expired_time < ov::Clock::NowMSec())
 	{
-		_publisher->DisconnectSession(GetSharedPtrAs<RtcSession>());
+		_publisher->DisconnectSession(pub::Session::GetSharedPtrAs<RtcSession>());
 		SetState(SessionState::Stopping);
 		return false;
 	}
@@ -286,8 +288,18 @@ bool RtcSession::SendOutgoingData(const std::any &packet)
 	return _rtp_rtcp->SendOutgoingData(copy_packet);
 }
 
+void RtcSession::OnRtpReceived(const std::shared_ptr<RtpPacket> &rtp_packet)
+{
+	// No one send RTP packet 
+}
+
 void RtcSession::OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info)
 {
+	if(GetState() != SessionState::Started)
+	{
+		return;
+	}
+
 	if(rtcp_info->GetPacketType() == RtcpPacketType::RR)
 	{
 		// Process
@@ -307,6 +319,11 @@ void RtcSession::OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info)
 
 bool RtcSession::ProcessNACK(const std::shared_ptr<RtcpInfo> &rtcp_info)
 {
+	if(_rtx_enabled == false)
+	{
+		return true;
+	}
+
 	auto stream = std::dynamic_pointer_cast<RtcStream>(GetStream());
 	if(stream == nullptr)
 	{

@@ -12,7 +12,7 @@
 
 #include "http_private.h"
 
-std::shared_ptr<HttpServer> HttpServerManager::CreateHttpServer(const ov::SocketAddress &address)
+std::shared_ptr<HttpServer> HttpServerManager::CreateHttpServer(const char *server_name, const ov::SocketAddress &address, int worker_count)
 {
 	std::shared_ptr<HttpServer> http_server = nullptr;
 
@@ -32,13 +32,30 @@ std::shared_ptr<HttpServer> HttpServerManager::CreateHttpServer(const ov::Socket
 				logte("Cannot reuse instance: Requested HttpServer, but previous instance is HttpsServer (%s)", address.ToString().CStr());
 				http_server = nullptr;
 			}
+			else
+			{
+				if (worker_count != HTTP_SERVER_USE_DEFAULT_COUNT)
+				{
+					auto physical_port = http_server->GetPhysicalPort();
+
+					if (physical_port != nullptr)
+					{
+						if (physical_port->GetWorkerCount() != worker_count)
+						{
+							logtw("The number of workers in the existing physical port differs from the number of workers passed by the argument: physical port: %zu, argument: %zu",
+								  physical_port->GetWorkerCount(), worker_count);
+							logtw("Because worker counts are different, the first initialized count is used: %d", physical_port->GetWorkerCount());
+						}
+					}
+				}
+			}
 		}
 		else
 		{
 			// Create a new HTTP server
-			http_server = std::make_shared<HttpServer>();
+			http_server = std::make_shared<HttpServer>(server_name);
 
-			if (http_server->Start(address))
+			if (http_server->Start(address, worker_count))
 			{
 				_http_servers[address] = http_server;
 			}
@@ -53,7 +70,7 @@ std::shared_ptr<HttpServer> HttpServerManager::CreateHttpServer(const ov::Socket
 	}
 }
 
-std::shared_ptr<HttpsServer> HttpServerManager::CreateHttpsServer(const ov::SocketAddress &address, const std::shared_ptr<info::Certificate> &certificate)
+std::shared_ptr<HttpsServer> HttpServerManager::CreateHttpsServer(const char *server_name, const ov::SocketAddress &address, const std::shared_ptr<info::Certificate> &certificate, int worker_count)
 {
 	std::shared_ptr<HttpsServer> https_server = nullptr;
 
@@ -85,11 +102,11 @@ std::shared_ptr<HttpsServer> HttpServerManager::CreateHttpsServer(const ov::Sock
 		else
 		{
 			// Create a new HTTP server
-			https_server = std::make_shared<HttpsServer>();
+			https_server = std::make_shared<HttpsServer>(server_name);
 
 			if (https_server->SetCertificate(certificate))
 			{
-				if (https_server->Start(address))
+				if (https_server->Start(address, worker_count))
 				{
 					_http_servers[address] = https_server;
 				}
@@ -110,7 +127,7 @@ std::shared_ptr<HttpsServer> HttpServerManager::CreateHttpsServer(const ov::Sock
 	}
 }
 
-std::shared_ptr<HttpsServer> HttpServerManager::CreateHttpsServer(const ov::SocketAddress &address, const std::vector<std::shared_ptr<ocst::VirtualHost>> &virtual_host_list)
+std::shared_ptr<HttpsServer> HttpServerManager::CreateHttpsServer(const char *server_name, const ov::SocketAddress &address, const std::vector<std::shared_ptr<ocst::VirtualHost>> &virtual_host_list, int worker_count)
 {
 	// Check if TLS is enabled
 	auto vhost_list = ocst::Orchestrator::GetInstance()->GetVirtualHostList();
@@ -123,7 +140,7 @@ std::shared_ptr<HttpsServer> HttpServerManager::CreateHttpsServer(const ov::Sock
 	// TODO(Dimiden): OME doesn't support SNI yet, so OME can handle only one certificate.
 	const auto &host_info = vhost_list[0]->host_info;
 
-	return CreateHttpsServer(address, host_info.GetCertificate());
+	return CreateHttpsServer(server_name, address, host_info.GetCertificate(), worker_count);
 }
 
 bool HttpServerManager::ReleaseServer(const std::shared_ptr<HttpServer> &http_server)

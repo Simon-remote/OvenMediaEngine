@@ -8,32 +8,23 @@
 //==============================================================================
 
 #include "cmaf_stream_packetizer.h"
+
 #include "cmaf_private.h"
 
 //====================================================================================================
 // Constructor
 //====================================================================================================
-CmafStreamPacketizer::CmafStreamPacketizer(const ov::String &app_name,
-										   const ov::String &stream_name,
-										   int segment_count,
-										   int segment_duration,
-										   const ov::String &segment_prefix,
-										   PacketizerStreamType stream_type,
+CmafStreamPacketizer::CmafStreamPacketizer(const ov::String &app_name, const ov::String &stream_name,
+										   int segment_count, int segment_duration,
 										   std::shared_ptr<MediaTrack> video_track, std::shared_ptr<MediaTrack> audio_track,
-										   const std::shared_ptr<ICmafChunkedTransfer> &chunked_transfer)
-	: StreamPacketizer(app_name,
-					   stream_name,
-					   segment_count,
-					   segment_duration,
-					   stream_type,
-					   video_track, audio_track)
+										   const std::shared_ptr<ChunkedTransferInterface> &chunked_transfer)
+	: StreamPacketizer(app_name, stream_name,
+					   segment_count, segment_duration,
+					   video_track, audio_track,
+					   chunked_transfer)
 {
-	_packetizer = std::make_shared<CmafPacketizer>(app_name,
-												   stream_name,
-												   stream_type,
-												   segment_prefix,
-												   segment_count,
-												   segment_duration,
+	_packetizer = std::make_shared<CmafPacketizer>(app_name, stream_name,
+												   segment_count, segment_duration,
 												   video_track, audio_track,
 												   chunked_transfer);
 }
@@ -48,7 +39,7 @@ CmafStreamPacketizer::~CmafStreamPacketizer()
 //====================================================================================================
 // Append Video Frame
 //====================================================================================================
-bool CmafStreamPacketizer::AppendVideoFrame(std::shared_ptr<PacketizerFrameData> &data)
+bool CmafStreamPacketizer::AppendVideoFrame(const std::shared_ptr<const PacketizerFrameData> &data)
 {
 	return _packetizer->AppendVideoFrame(data);
 }
@@ -56,7 +47,7 @@ bool CmafStreamPacketizer::AppendVideoFrame(std::shared_ptr<PacketizerFrameData>
 //====================================================================================================
 // Append Audi Frame
 //====================================================================================================
-bool CmafStreamPacketizer::AppendAudioFrame(std::shared_ptr<PacketizerFrameData> &data)
+bool CmafStreamPacketizer::AppendAudioFrame(const std::shared_ptr<const PacketizerFrameData> &data)
 {
 	return _packetizer->AppendAudioFrame(data);
 }
@@ -74,7 +65,7 @@ bool CmafStreamPacketizer::GetPlayList(ov::String &play_list)
 // GetSegmentData
 // - M4S
 //====================================================================================================
-std::shared_ptr<SegmentData> CmafStreamPacketizer::GetSegmentData(const ov::String &file_name)
+std::shared_ptr<const SegmentItem> CmafStreamPacketizer::GetSegmentData(const ov::String &file_name) const
 {
 	return _packetizer->GetSegmentData(file_name);
 }

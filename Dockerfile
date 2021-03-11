@@ -12,15 +12,15 @@ ARG     PREFIX=/opt/ovenmediaengine
 ARG     MAKEFLAGS="-j16"
 
 ENV     OME_VERSION=master \
-        OPENSSL_VERSION=1.1.0g \
+        OPENSSL_VERSION=1.1.1i \
         SRTP_VERSION=2.2.0 \
-        SRT_VERSION=1.3.3 \
+        SRT_VERSION=1.4.2 \
         OPUS_VERSION=1.1.3 \
         X264_VERSION=20190513-2245-stable \
-        X265_VERSION=3.2.1 \
+        X265_VERSION=3.4 \
         VPX_VERSION=1.7.0 \
         FDKAAC_VERSION=0.1.5 \
-        FFMPEG_VERSION=3.4 \
+        FFMPEG_VERSION=4.3.1 \
         JEMALLOC_VERSION=5.2.1 \
         PCRE2_VERSION=10.35
 
@@ -93,7 +93,7 @@ RUN \
         DIR=/tmp/x265 && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLf https://get.videolan.org/x265/x265_${X265_VERSION}.tar.gz | tar -zx --strip-components=1 && \
+        curl -sLf https://github.com/videolan/x265/archive/${X265_VERSION}.tar.gz | tar -zx --strip-components=1 && \
         cd ${DIR}/build/linux && \
         cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DENABLE_SHARED:bool=on ../../source && \
         make && \
@@ -128,7 +128,7 @@ RUN \
         DIR=/tmp/ffmpeg && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLf https://github.com/AirenSoft/FFmpeg/archive/ome/${FFMPEG_VERSION}.tar.gz | tar -xz --strip-components=1 && \
+        curl -sLf https://github.com/AirenSoft/FFmpeg/archive/n${FFMPEG_VERSION}-ome.tar.gz | tar -xz --strip-components=1 && \
         PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}" ./configure \
         --prefix="${PREFIX}" \
         --enable-gpl \
@@ -141,9 +141,9 @@ RUN \
         --disable-debug \
         --disable-doc \
         --disable-programs \
-        --disable-avdevice --disable-dct --disable-dwt --disable-error-resilience --disable-lsp --disable-lzo --disable-rdft --disable-faan --disable-pixelutils \
-        --disable-everything \
+        --disable-avdevice --disable-dct --disable-dwt --disable-lsp --disable-lzo --disable-rdft --disable-faan --disable-pixelutils \
         --enable-zlib --enable-libopus --enable-libvpx --enable-libfdk_aac --enable-libx264 --enable-libx265 \
+        --disable-everything \
         --enable-encoder=libvpx_vp8,libvpx_vp9,libopus,libfdk_aac,libx264,libx265,mjpeg,png \
         --enable-decoder=aac,aac_latm,aac_fixed,h264,hevc \
         --enable-parser=aac,aac_latm,aac_fixed,h264,hevc \

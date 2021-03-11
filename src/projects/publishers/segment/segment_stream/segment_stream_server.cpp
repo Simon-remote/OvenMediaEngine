@@ -9,6 +9,7 @@
 #include "segment_stream_server.h"
 
 #include <modules/http_server/http_server_manager.h>
+#include <monitoring/monitoring.h>
 
 #include <regex>
 #include <sstream>
@@ -28,7 +29,8 @@ SegmentStreamServer::SegmentStreamServer()
 
 bool SegmentStreamServer::Start(const ov::SocketAddress *address,
 								const ov::SocketAddress *tls_address,
-								int thread_count)
+								int thread_count,
+								int worker_count)
 {
 	if ((_http_server != nullptr) || (_https_server != nullptr))
 	{
@@ -42,8 +44,10 @@ bool SegmentStreamServer::Start(const ov::SocketAddress *address,
 	auto vhost_list = ocst::Orchestrator::GetInstance()->GetVirtualHostList();
 
 	auto manager = HttpServerManager::GetInstance();
-	std::shared_ptr<HttpServer> http_server = (address != nullptr) ? manager->CreateHttpServer(*address) : nullptr;
-	std::shared_ptr<HttpsServer> https_server = (tls_address != nullptr) ? manager->CreateHttpsServer(*tls_address, vhost_list) : nullptr;
+	std::shared_ptr<HttpServer> http_server = (address != nullptr) ? manager->CreateHttpServer("SegPub", *address, worker_count) : nullptr;
+	result = result && ((address != nullptr) ? (http_server != nullptr) : true);
+	std::shared_ptr<HttpsServer> https_server = (tls_address != nullptr) ? manager->CreateHttpsServer("SegPub", *tls_address, vhost_list, worker_count) : nullptr;
+	result = result && ((tls_address != nullptr) ? (https_server != nullptr) : true);
 
 	auto segment_stream_interceptor = result ? CreateInterceptor() : nullptr;
 
@@ -304,7 +308,7 @@ bool SegmentStreamServer::SetAllowOrigin(const ov::String &origin_url, const std
 // <Url>https://demo.ovenplayer.com</Url>
 // <Url>http://*.ovenplayer.com</Url>
 //====================================================================================================
-void SegmentStreamServer::SetCrossDomain(const std::vector<cfg::cmn::Url> &url_list)
+void SegmentStreamServer::SetCrossDomain(const std::vector<ov::String> &url_list)
 {
 	std::vector<ov::String> crossdmain_urls;
 	ov::String http_prefix = "http://";
@@ -315,10 +319,8 @@ void SegmentStreamServer::SetCrossDomain(const std::vector<cfg::cmn::Url> &url_l
 		return;
 	}
 
-	for (auto &url_item : url_list)
+	for (auto &url : url_list)
 	{
-		ov::String url = url_item.GetUrl();
-
 		// all access allow
 		if (url == "*")
 		{
@@ -387,4 +389,26 @@ bool SegmentStreamServer::UrlExistCheck(const std::vector<ov::String> &url_list,
 							 });
 
 	return (item != url_list.end());
+}
+
+bool SegmentStreamServer::IncreaseBytesOut(const std::shared_ptr<HttpClient> &client, size_t sent_bytes)
+{
+	auto request = client->GetRequest();
+
+	auto stream_info = request->GetExtraAs<pub::Stream>();
+
+	if (stream_info != nullptr)
+	{
+		auto stream_metric = StreamMetrics(*stream_info);
+		if (stream_metric != nullptr)
+		{
+			stream_metric->IncreaseBytesOut(GetPublisherType(), sent_bytes);
+		}
+	}
+	else
+	{
+		OV_ASSERT(stream_info != nullptr, "stream_info must not be nullptr: %p", request.get());
+	}
+
+	return true;
 }

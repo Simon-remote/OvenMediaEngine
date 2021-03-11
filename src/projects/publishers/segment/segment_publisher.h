@@ -90,7 +90,7 @@ public:
 		_publisher_type = type;
 		_ip_address = ip;
 		_sequence_number = seq;
-		_duration = (double)duration / (double)(PACKTYZER_DEFAULT_TIMESCALE); // convert to second
+		_duration = duration;
 		_last_requested_time = std::chrono::system_clock::now();
 		_count = 0;
 	}
@@ -132,7 +132,7 @@ public:
 	bool IsExpiredRequest()
 	{
 		auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - _last_requested_time).count();
-		if(elapsed > _duration * 10)
+		if(elapsed > _duration * 5)
 		{
 			return true;
 		}
@@ -202,9 +202,8 @@ protected:
 	SegmentPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
 	~SegmentPublisher() override;
 
-	bool Start(const cfg::cmn::SingularPort &port_config, const cfg::cmn::SingularPort &tls_port_config, const std::shared_ptr<SegmentStreamServer> &stream_server);
+	bool Start(const cfg::cmn::SingularPort &port_config, const cfg::cmn::SingularPort &tls_port_config, const std::shared_ptr<SegmentStreamServer> &stream_server, int worker_count);
 	virtual bool Start() = 0;
-	
 
 	bool HandleSignedX(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, 
 						const std::shared_ptr<HttpClient> &client, const std::shared_ptr<const ov::Url> &request_url,
@@ -219,7 +218,7 @@ protected:
 
 	bool OnSegmentRequest(const std::shared_ptr<HttpClient> &client,
 						  const SegmentStreamRequestInfo &request_info,
-						  std::shared_ptr<SegmentData> &segment) override;
+						  std::shared_ptr<const SegmentItem> &segment) override;
 
 	std::shared_ptr<SegmentStreamServer> _stream_server = nullptr;
 

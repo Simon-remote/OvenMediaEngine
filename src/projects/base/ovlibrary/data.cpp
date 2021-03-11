@@ -7,10 +7,11 @@
 //
 //==============================================================================
 #include "data.h"
-#include "./assert.h"
-#include "./dump_utilities.h"
 
 #include <cstdint>
+
+#include "./assert.h"
+#include "./dump_utilities.h"
 
 namespace ov
 {
@@ -26,7 +27,7 @@ namespace ov
 
 	Data::Data(const void *data, size_t length, bool reference_only)
 	{
-		if ((length == 0) || (data == nullptr))
+		if (data == nullptr)
 		{
 			OV_ASSERT2(false);
 			return;
@@ -169,6 +170,16 @@ namespace ov
 		return IsEqual(data);
 	}
 
+	bool Data::operator==(const std::shared_ptr<const Data> &data) const
+	{
+		if (data != nullptr)
+		{
+			return IsEqual(data.get());
+		}
+
+		return false;
+	}
+
 	bool Data::IsEqual(const void *data, size_t length) const
 	{
 		if (GetLength() == length)
@@ -229,7 +240,7 @@ namespace ov
 		if (_allocated_data.use_count() == 1)
 		{
 			// Nobody references _allocated_data. So do not need to copy the data
-			if(_allocated_data->size() == GetLength())
+			if (_allocated_data->size() == GetLength())
 			{
 				return true;
 			}
@@ -286,9 +297,9 @@ namespace ov
 
 	bool Data::Insert(const void *data, off_t offset, size_t length)
 	{
-		if (data == nullptr)
+		if ((data == nullptr) && (length > 0))
 		{
-			OV_ASSERT(false, "Invalid parameter: data must not be NULL");
+			OV_ASSERT(false, "Invalid parameter: length is greater than 0, but data is NULL");
 			return false;
 		}
 
@@ -348,20 +359,29 @@ namespace ov
 
 	bool Data::Erase(off_t offset, size_t length)
 	{
+		if (length == 0)
+		{
+			// Nothing to do
+			return true;
+		}
+
 		if (Detach() == false)
 		{
 			return false;
 		}
 
-		if ((offset < 0) || (offset + length >= _length))
+		if ((offset < 0) || (offset + length > _length))
 		{
 			OV_ASSERT(false, "Invalid offset: %jd, length: %zu (current length: %zu)", offset, length, _length);
+			return false;
 		}
 
-		_allocated_data->erase(_allocated_data->begin() + offset, _allocated_data->begin() + length);
+		auto begin = _allocated_data->begin() + offset;
+
+		_allocated_data->erase(begin, begin + length);
 		_length -= length;
 
-		OV_ASSERT2(_length = _allocated_data->size());
+		OV_ASSERT(_length == _allocated_data->size(), "length: %zu, allocated size: %zu", _length, _allocated_data->size());
 
 		return true;
 	}

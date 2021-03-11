@@ -8,7 +8,8 @@
 
 OvtDepacketizer::OvtDepacketizer()
 {
-	_payload_buffer.Reserve(INIT_PAYLOAD_BUFFER_SIZE);
+	_packet_buffer.Reserve(INIT_PACKET_BUFFER_SIZE);
+	_media_packet_buffer.Reserve(INIT_PAYLOAD_BUFFER_SIZE);
 }
 
 OvtDepacketizer::~OvtDepacketizer()
@@ -16,52 +17,160 @@ OvtDepacketizer::~OvtDepacketizer()
 
 }
 
-bool OvtDepacketizer::AppendPacket(const std::shared_ptr<OvtPacket> &packet)
+bool OvtDepacketizer::AppendPacket(const void *data, size_t length)
 {
-	_payload_buffer.Append(packet->Payload(), packet->PayloadLength());
+	_packet_buffer.Append(data, length);
+	return ParsePacket();
+}
 
-	// The last packet of MediaPacket
-	if(packet->Marker())
+bool OvtDepacketizer::AppendPacket(const std::shared_ptr<const ov::Data> &packet)
+{
+	_packet_buffer.Append(packet);
+	return ParsePacket();
+}
+
+bool OvtDepacketizer::ParsePacket()
+{
+	while(_packet_buffer.GetLength() >= OVT_FIXED_HEADER_SIZE)
 	{
-		// Validation
-		if(_payload_buffer.GetLength() < MEDIA_PACKET_HEADER_SIZE)
+		// Parsing
+		auto packet_mold = std::make_shared<OvtPacket>();
+
+		// Parse header
+		if(packet_mold->Load(_packet_buffer) == false)
 		{
-			logte("Invalid media packet payload : payload size is less than header size");
-			_payload_buffer.Clear();
-			return false;
+			if(packet_mold->IsHeaderAvailable())
+			{
+				logtd("Buffer is not enough : Buffer size : %u Required size : %u", _packet_buffer.GetLength(), packet_mold->PacketLength());	
+				// Not enough data to parse yet
+				return true;
+			}
+			else
+			{
+				logte("Packet is invalid : buffer size (%u) required size : %u", _packet_buffer.GetLength(), packet_mold->PacketLength());
+				return false;
+			}
 		}
 
-		auto buffer = _payload_buffer.GetDataAs<uint8_t>();
-		auto track_id = ByteReader<uint32_t>::ReadBigEndian(&buffer[0]);
-		auto pts = ByteReader<uint64_t>::ReadBigEndian(&buffer[4]);
-		auto dts = ByteReader<uint64_t>::ReadBigEndian(&buffer[12]);
-		auto duration = ByteReader<uint64_t>::ReadBigEndian(&buffer[20]);
-		auto media_type = static_cast<cmn::MediaType>(ByteReader<uint8_t>::ReadBigEndian(&buffer[28]));
-		auto media_flag = static_cast<MediaPacketFlag>(ByteReader<uint8_t>::ReadBigEndian(&buffer[29]));
-		auto data_size = ByteReader<uint32_t>::ReadBigEndian(&buffer[30]);
-
-		if(data_size != _payload_buffer.GetLength() - MEDIA_PACKET_HEADER_SIZE)
+		if(_packet_buffer.GetLength() == packet_mold->PacketLength())
 		{
-			logte("Invalid media packet payload : payload size is invalid");
-			_payload_buffer.Clear();
-			return false;
+			_packet_buffer.Clear();
+		}
+		else
+		{
+			_packet_buffer.Erase(0, packet_mold->PacketLength());
 		}
 
-		auto media_packet = std::make_shared<MediaPacket>(media_type, track_id,
-														_payload_buffer.Subdata(MEDIA_PACKET_HEADER_SIZE),
-														pts, dts, duration, media_flag);
-
-		_media_packets.push(media_packet);
-
-		_payload_buffer.Clear();
+		if(packet_mold->PayloadType() == OVT_PAYLOAD_TYPE_MESSAGE_REQUEST || 
+			packet_mold->PayloadType() == OVT_PAYLOAD_TYPE_MESSAGE_RESPONSE)
+		{
+			if(AppendMessagePacket(packet_mold) == false)
+			{
+				return false;
+			}
+		}
+		else if(packet_mold->PayloadType() == OVT_PAYLOAD_TYPE_MEDIA_PACKET)
+		{
+			if(AppendMediaPacket(packet_mold) == false)
+			{
+				return false;
+			}
+		}
 	}
 
 	return true;
 }
 
+bool OvtDepacketizer::IsAvailableMessage()
+{
+	return !_messages.empty();
+}
+
 bool OvtDepacketizer::IsAvaliableMediaPacket()
 {
 	return !_media_packets.empty();
+}
+
+bool OvtDepacketizer::AppendMessagePacket(const std::shared_ptr<OvtPacket> &packet)
+{
+	//TODO(Getroot): Need to validate packet
+	_message_buffer.Append(packet->Payload(), packet->PayloadLength());
+
+	if(packet->Marker())
+	{
+		// Validation
+		if(_message_buffer.GetLength() <= 0)
+		{
+			logte("Invalid message : payload size is zero");
+			_message_buffer.Clear();
+			return false;
+		}
+
+		auto message = _message_buffer.Clone();
+		_messages.push(message);
+		
+		_message_buffer.Clear();
+	}
+
+	return true;
+}
+
+bool OvtDepacketizer::AppendMediaPacket(const std::shared_ptr<OvtPacket> &packet)
+{
+	_media_packet_buffer.Append(packet->Payload(), packet->PayloadLength());
+
+	// The last packet of MediaPacket
+	if(packet->Marker())
+	{
+		// Validation
+		if(_media_packet_buffer.GetLength() < MEDIA_PACKET_HEADER_SIZE)
+		{
+			logte("Invalid media packet payload : payload size is less than header size");
+			_media_packet_buffer.Clear();
+			return false;
+		}
+
+		auto buffer = _media_packet_buffer.GetDataAs<uint8_t>();
+		auto track_id = ByteReader<uint32_t>::ReadBigEndian(&buffer[0]);
+		auto pts = ByteReader<uint64_t>::ReadBigEndian(&buffer[4]);
+		auto dts = ByteReader<uint64_t>::ReadBigEndian(&buffer[12]);
+		[[maybe_unused]]auto duration = ByteReader<uint64_t>::ReadBigEndian(&buffer[20]);
+		auto media_type = static_cast<cmn::MediaType>(ByteReader<uint8_t>::ReadBigEndian(&buffer[28]));
+		[[maybe_unused]]auto media_flag = static_cast<MediaPacketFlag>(ByteReader<uint8_t>::ReadBigEndian(&buffer[29]));
+		auto bitstream_format = static_cast<cmn::BitstreamFormat>(ByteReader<uint8_t>::ReadBigEndian(&buffer[30]));
+		auto packet_type = static_cast<cmn::PacketType>(ByteReader<uint8_t>::ReadBigEndian(&buffer[31]));
+		auto data_size = ByteReader<uint32_t>::ReadBigEndian(&buffer[32]);
+
+		if(data_size != _media_packet_buffer.GetLength() - MEDIA_PACKET_HEADER_SIZE)
+		{
+			logte("Invalid media packet payload : payload size is invalid");
+			_media_packet_buffer.Clear();
+			return false;
+		}
+
+		auto media_packet = std::make_shared<MediaPacket>(media_type, track_id,
+														_media_packet_buffer.Subdata(MEDIA_PACKET_HEADER_SIZE),
+														pts, dts, bitstream_format, packet_type);
+
+		_media_packets.push(media_packet);
+
+		_media_packet_buffer.Clear();
+	}
+
+	return true;
+}
+
+const std::shared_ptr<ov::Data> OvtDepacketizer::PopMessage()
+{
+	if(!IsAvailableMessage())
+	{
+		return nullptr;
+	}
+
+	auto message = _messages.front();
+	_messages.pop();
+
+	return std::move(message);
 }
 
 const std::shared_ptr<MediaPacket> OvtDepacketizer::PopMediaPacket()

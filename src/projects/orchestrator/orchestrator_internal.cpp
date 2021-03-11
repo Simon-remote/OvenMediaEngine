@@ -155,14 +155,13 @@ namespace ocst
 		// TODO(dimiden): Is there a way to reduce the cost of O(n^2)?
 		for (auto &host_name : host_config.GetNameList())
 		{
-			auto name = host_name.GetName();
 			bool found = false;
 
 			for (auto &host : *host_list)
 			{
 				if (host.state == ItemState::NeedToCheck)
 				{
-					if (host.name == name)
+					if (host.name == host_name)
 					{
 						host.state = ItemState::NotChanged;
 						found = true;
@@ -173,10 +172,10 @@ namespace ocst
 
 			if (found == false)
 			{
-				logtd("      - %s: New", host_name.GetName().CStr());
+				logtd("      - %s: New", host_name.CStr());
 				// Adding items here causes unnecessary iteration in the for statement above
 				// To avoid this, we need to create a separate list for each added item
-				host_list->push_back(name);
+				host_list->push_back(host_name);
 				is_changed = true;
 			}
 		}
@@ -249,12 +248,12 @@ namespace ocst
 
 							bool is_equal = std::equal(
 								first_url_list.begin(), first_url_list.end(), second_url_list.begin(),
-								[&origin](const cfg::cmn::Url &url1, const cfg::cmn::Url &url2) -> bool {
-									bool result = url1.GetUrl() == url2.GetUrl();
+								[&origin](const ov::String &url1, const ov::String &url2) -> bool {
+									bool result = url1 == url2;
 
 									if (result == false)
 									{
-										logtd("      - %s: Changed (URL does not the same: %s != %s)", origin.location.CStr(), url1.GetUrl().CStr(), url2.GetUrl().CStr());
+										logtd("      - %s: Changed (URL does not the same: %s != %s)", origin.location.CStr(), url1.CStr(), url2.CStr());
 									}
 
 									return result;
@@ -551,7 +550,7 @@ namespace ocst
 					// Append remaining_part
 					url_part.Append(remaining_part);
 
-					if(index >= 0)
+					if (index >= 0)
 					{
 						url_part.Append('?');
 						url_part.Append(another_part);
@@ -684,8 +683,7 @@ namespace ocst
 				logte("The module %p (%s) returns error while deleting the application %s",
 					  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetName().CStr());
 
-				// Ignore this error
-				result = Result::Failed;
+				// Ignore this error - some providers may not have generated the app
 			}
 			else
 			{
@@ -735,7 +733,7 @@ namespace ocst
 	{
 		auto &vhost_app_name = app_info.GetName();
 
-		if(vhost_app_name.IsValid() == false)
+		if (vhost_app_name.IsValid() == false)
 		{
 			return Result::Failed;
 		}
@@ -745,7 +743,7 @@ namespace ocst
 
 	const info::Application &OrchestratorInternal::GetApplicationInfo(const info::VHostAppName &vhost_app_name) const
 	{
-		if(vhost_app_name.IsValid())
+		if (vhost_app_name.IsValid())
 		{
 			auto &vhost_name = vhost_app_name.GetVHostName();
 			auto vhost = GetVirtualHost(vhost_name);

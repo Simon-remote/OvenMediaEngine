@@ -27,6 +27,7 @@
 
 enum class StreamSourceType : int8_t
 {
+	WebRTC,
 	Ovt,
 	Rtmp,
 	Rtsp,
@@ -50,6 +51,7 @@ enum class ProviderType : int8_t
 	RtspPull,
 	Ovt,
 	Mpegts,
+	WebRTC
 };
 
 // Note : If you update PublisherType, you have to update /base/ovlibrary/converter.h:ToString(PublisherType type)
@@ -64,6 +66,7 @@ enum class PublisherType : int8_t
 	LlDash,
 	Ovt,
 	File,
+	Thumbnail,
 	NumberOfPublishers,
 };
 
@@ -76,6 +79,17 @@ enum class FrameType : int8_t
 	AudioFrameCN,  // Comfort Noise, https://tools.ietf.org/html/rfc3389
 	VideoFrameKey,
 	VideoFrameDelta,
+};
+
+enum class NodeType : int16_t
+{
+	Unknown = 0,
+	Rtp = 100,
+	Rtcp = 101,
+	Srtp = 200,
+	Sctp = 300,
+	Dtls = 400,
+	Ice = 500
 };
 
 struct FragmentationHeader
@@ -231,6 +245,8 @@ static ov::String StringFromStreamSourceType(const StreamSourceType &type)
 {
 	switch (type)
 	{
+		case StreamSourceType::WebRTC:
+			return "WebRTC";
 		case StreamSourceType::Ovt:
 			return "Ovt";
 		case StreamSourceType::Rtmp:
@@ -262,6 +278,8 @@ static ov::String StringFromProviderType(const ProviderType &type)
 			return "OVT";
 		case ProviderType::Mpegts:
 			return "MPEG-TS";
+		case ProviderType::WebRTC:
+			return "WebRTC";
 	}
 
 	return "Unknown";
@@ -290,6 +308,8 @@ static ov::String StringFromPublisherType(const PublisherType &type)
 			return "OVT";
 		case PublisherType::File:
 			return "File";
+		case PublisherType::Thumbnail:
+			return "Thumbnail";			
 	}
 
 	return "Unknown";
@@ -321,7 +341,7 @@ static ov::String StringFromMediaCodecId(const cmn::MediaCodecId &type)
 			return "PNG";
 		case cmn::MediaCodecId::None:
 		default:
-			return "Unknwon";
+			return "Unknown";
 	}
 }
 

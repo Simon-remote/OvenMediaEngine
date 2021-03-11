@@ -18,6 +18,7 @@ namespace pub
 	{
 		_stop_thread_flag = false;
 		_worker_thread = std::thread(&ApplicationWorker::WorkerThread, this);
+		pthread_setname_np(_worker_thread.native_handle(), "AppWorker");
 
 		ov::String queue_name;
 
@@ -38,7 +39,12 @@ namespace pub
 		{
 			return true;
 		}
+
+		_stream_data_queue.Clear();
+		_incoming_packet_queue.Clear();
+
 		_stop_thread_flag = true;
+
 		_queue_event.Notify();
 
 		if (_worker_thread.joinable())
@@ -229,7 +235,7 @@ namespace pub
 	}
 
 	// Called by MediaRouteApplicationObserver
-	bool Application::OnCreateStream(const std::shared_ptr<info::Stream> &info)
+	bool Application::OnStreamCreated(const std::shared_ptr<info::Stream> &info)
 	{
 		auto stream_worker_count = GetConfig().GetSessionLoadBalancingThreadCount();
 
@@ -245,7 +251,7 @@ namespace pub
 		return true;
 	}
 
-	bool Application::OnDeleteStream(const std::shared_ptr<info::Stream> &info)
+	bool Application::OnStreamDeleted(const std::shared_ptr<info::Stream> &info)
 	{
 		std::unique_lock<std::shared_mutex> lock(_stream_map_mutex);
 
@@ -253,7 +259,7 @@ namespace pub
 		if(stream_it == _streams.end())
 		{
 			// Sometimes stream rejects stream creation if the input codec is not supported. So this is a normal situation.
-			logtd("OnDeleteStream failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
+			logtd("OnStreamDeleted failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
 			return true;
 		}
 
@@ -268,7 +274,31 @@ namespace pub
 
 		lock.lock();
 		_streams.erase(info->GetId());
+
+		// Stop stream
 		stream->Stop();
+
+		return true;
+	}
+
+	bool Application::OnStreamPrepared(const std::shared_ptr<info::Stream> &info) 
+	{
+		std::shared_lock<std::shared_mutex> lock(_stream_map_mutex);
+
+		auto stream_it = _streams.find(info->GetId());
+		if(stream_it == _streams.end())
+		{
+			// Sometimes stream rejects stream creation if the input codec is not supported. So this is a normal situation.
+			logtd("OnStreamPrepared failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
+			return true;
+		}
+
+		auto stream = stream_it->second;
+
+		lock.unlock();
+
+		// Start stream
+		stream->Start();
 
 		return true;
 	}

@@ -1,7 +1,9 @@
+#include "record.h"
+
 #include <base/ovlibrary/ovlibrary.h>
+
 #include <random>
 
-#include "record.h"
 #include "stream.h"
 
 namespace info
@@ -9,21 +11,34 @@ namespace info
 	Record::Record()
 	{
 		_created_time = std::chrono::system_clock::now();
+		_transaction_id = "";
 		_id = "";
+		_metadata = "";
 		_stream = nullptr;
 
 		_file_path = "";
+		_file_path_by_user = false;
 		_tmp_path = "";
-		_fileinfo_path = "";
+		_info_path = "";
+		_info_path_by_user = false;
 
 		_record_bytes = 0;
 		_record_time = 0;
-
+		_interval = 0;
 		_record_total_bytes = 0;
 		_record_total_time = 0;
 		_sequence = 0;
 
 		_state = RecordState::Ready;
+	}
+
+	void Record::SetTransactionId(ov::String transaction_id)
+	{
+		_transaction_id = transaction_id;
+	}
+	ov::String Record::GetTransactionId()
+	{
+		return _transaction_id;
 	}
 
 	void Record::SetId(ov::String record_id)
@@ -35,14 +50,23 @@ namespace info
 	{
 		return _id;
 	}
-		
-	void Record::SetEnable(bool eanble) 
-	{ 
-		_enable = eanble; 
+
+	void Record::SetMetadata(ov::String metadata)
+	{
+		_metadata = metadata;
 	}
-	bool Record::GetEnable() 
-	{ 
-		return _enable; 
+	ov::String Record::GetMetadata() const
+	{
+		return _metadata;
+	}
+
+	void Record::SetEnable(bool eanble)
+	{
+		_enable = eanble;
+	}
+	bool Record::GetEnable()
+	{
+		return _enable;
 	}
 
 	void Record::SetVhost(ov::String value)
@@ -84,20 +108,28 @@ namespace info
 		_session_id = id;
 	}
 
-	session_id_t Record::GetSessionId() {
+	session_id_t Record::GetSessionId()
+	{
 		return _session_id;
 	}
 
 	void Record::SetStream(const info::Stream &stream)
 	{
-		_stream = std::make_shared<info::Stream>(stream);		
+		_stream = std::make_shared<info::Stream>(stream);
 	}
 
 	const std::chrono::system_clock::time_point &Record::GetCreatedTime() const
 	{
 		return _created_time;
 	}
-
+	void Record::SetInterval(int32_t interval)
+	{
+		_interval = interval;
+	}
+	int32_t Record::GetInterval()
+	{
+		return _interval;
+	}
 	void Record::SetFilePath(ov::String file_path)
 	{
 		_file_path = file_path;
@@ -107,9 +139,25 @@ namespace info
 	{
 		_tmp_path = tmp_path;
 	}
-	void Record::SetFileInfoPath(ov::String fileinfo_path)
+	void Record::SetInfoPath(ov::String info_path)
 	{
-		_fileinfo_path = fileinfo_path;
+		_info_path = info_path;
+	}
+	void Record::SetFilePathSetByUser(bool by_user)
+	{
+		_file_path_by_user = by_user;
+	}
+	bool Record::IsFilePathSetByUser()
+	{
+		return _file_path_by_user;
+	}
+	void Record::SetInfoPathSetByUser(bool by_user)
+	{
+		_info_path_by_user = by_user;
+	}
+	bool Record::IsInfoPathSetByUser()
+	{
+		return _info_path_by_user;
 	}
 	void Record::IncreaseRecordBytes(uint64_t bytes)
 	{
@@ -144,9 +192,9 @@ namespace info
 	{
 		return _tmp_path;
 	}
-	ov::String Record::GetFileInfoPath()
+	ov::String Record::GetInfoPath()
 	{
-		return _fileinfo_path;
+		return _info_path;
 	}
 	uint64_t Record::GetRecordBytes()
 	{
@@ -186,32 +234,32 @@ namespace info
 	}
 	ov::String Record::GetStateString()
 	{
-		switch(GetState())
+		switch (GetState())
 		{
 			case RecordState::Ready:
 				return "ready";
 			case RecordState::Recording:
-				return "recording";				
+				return "recording";
 			case RecordState::Stopping:
-				return "stopping";					
+				return "stopping";
 			case RecordState::Stopped:
-				return "stopped";	
+				return "stopped";
 			case RecordState::Error:
-				return "error";									
+				return "error";
 		}
 
 		return "Unknown";
 	}
 
-	const ov::String Record::GetInfoString() 
+	const ov::String Record::GetInfoString()
 	{
 		ov::String info = "\n";
 
 		info.AppendFormat(" id=%s\n", _id.CStr());
-		info.AppendFormat(" stream=%s\n", (_stream != nullptr)?_stream->GetName().CStr():"");
+		info.AppendFormat(" stream=%s\n", (_stream != nullptr) ? _stream->GetName().CStr() : "");
 		info.AppendFormat(" file_path=%s\n", _file_path.CStr());
 		info.AppendFormat(" tmp_path=%s\n", _tmp_path.CStr());
-		info.AppendFormat(" fileinfo_path=%s\n", _fileinfo_path.CStr());
+		info.AppendFormat(" info_path=%s\n", _info_path.CStr());
 		info.AppendFormat(" record_bytes=%lld\n", _record_bytes);
 		info.AppendFormat(" record_bytes=%lld\n", _record_bytes);
 		info.AppendFormat(" record_total_bytes=%lld\n", _record_total_bytes);
@@ -222,6 +270,6 @@ namespace info
 		info.AppendFormat(" record_stop_time=%s", ov::Converter::ToString(_record_stop_time).CStr());
 
 		return info;
-	}	
+	}
 
 }  // namespace info

@@ -7,6 +7,9 @@
 //
 //==============================================================================
 #include "cmaf_stream_server.h"
+
+#include <monitoring/monitoring.h>
+
 #include "../dash/dash_define.h"
 #include "cmaf_packetizer.h"
 #include "cmaf_private.h"
@@ -17,10 +20,10 @@ HttpConnection CmafStreamServer::ProcessSegmentRequest(const std::shared_ptr<Htt
 {
 	auto response = client->GetResponse();
 
-	auto type = DashPacketizer::GetFileType(request_info.file_name);
+	auto type = CmafPacketizer::GetFileType(request_info.file_name);
 
 	bool is_video = ((type == DashFileType::VideoSegment) || (type == DashFileType::VideoInit));
-	std::shared_ptr<SegmentData> segment = nullptr;
+	std::shared_ptr<SegmentItem> segment = nullptr;
 
 	// Check if the requested file is being created
 	{
@@ -31,6 +34,33 @@ HttpConnection CmafStreamServer::ProcessSegmentRequest(const std::shared_ptr<Htt
 		auto chunk_item = _http_chunk_list.find(key);
 		if (chunk_item != _http_chunk_list.end())
 		{
+			// Find stream info
+			std::shared_ptr<pub::Stream> stream_info;
+			for (auto observer : _observers)
+			{
+				auto segment_publisher = std::dynamic_pointer_cast<pub::Publisher>(observer);
+
+				if (segment_publisher != nullptr)
+				{
+					stream_info = segment_publisher->GetStreamAs<pub::Stream>(request_info.vhost_app_name, request_info.stream_name);
+
+					if (stream_info != nullptr)
+					{
+						break;
+					}
+				}
+			}
+
+			if (stream_info == nullptr)
+			{
+				OV_ASSERT(false, "Stream does not exist, but remains in _http_chunk_list");
+
+				response->SetStatusCode(HttpStatusCode::InternalServerError);
+				return HttpConnection::Closed;
+			}
+
+			client->GetRequest()->SetExtra(stream_info);
+
 			// The file is being created
 			logtd("Requested file is being created");
 
@@ -43,7 +73,9 @@ HttpConnection CmafStreamServer::ProcessSegmentRequest(const std::shared_ptr<Htt
 
 			// Append data to HTTP response
 			response->AppendData(chunk_item->second->chunked_data);
-			response->Response();
+			auto sent_bytes = response->Response();
+
+			IncreaseBytesOut(client, sent_bytes);
 
 			chunk_item->second->client_list.push_back(client);
 
@@ -74,13 +106,26 @@ void CmafStreamServer::OnCmafChunkDataPush(const ov::String &app_name, const ov:
 
 	chunk_item->second->AddChunkData(chunk_data);
 
-	for (auto client : chunk_item->second->client_list)
+	auto client_item = chunk_item->second->client_list.begin();
+
+	while (client_item != chunk_item->second->client_list.end())
 	{
+		auto &client = *client_item;
+
 		auto response = client->GetResponse();
 
-		if (response->SendChunkedData(chunk_data) == false)
+		if (response->SendChunkedData(chunk_data))
 		{
-			logtd("Failed to send the chunked data for [%s/%s, %s] to %s (%zu bytes)", app_name.CStr(), stream_name.CStr(), file_name.CStr(), response->GetRemote()->ToString().CStr(), chunk_data->GetLength());
+			IncreaseBytesOut(client, chunk_data->GetLength());
+
+			++client_item;
+		}
+		else
+		{
+			logtw("Failed to send the chunked data for [%s/%s, %s] to %s (%zu bytes)", app_name.CStr(), stream_name.CStr(), file_name.CStr(), response->GetRemote()->ToString().CStr(), chunk_data->GetLength());
+
+			client_item = chunk_item->second->client_list.erase(client_item);
+			response->Close();
 		}
 	}
 }

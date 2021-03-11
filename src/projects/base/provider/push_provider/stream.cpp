@@ -64,26 +64,18 @@ namespace pvd
 		return _stop_watch.Elapsed() / 1000;
 	}
 
-	bool PushStream::PublishInterleavedChannel(const info::VHostAppName &vhost_app_name)
+	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
 	{
 		if(_provider == nullptr)
 		{
 			return false;
 		}
 
-		_is_published = _provider->PublishInterleavedChannel(GetChannelId(), vhost_app_name, GetSharedPtrAs<PushStream>());
+		_attemps_publish_count++;
+		
+		_is_published = _provider->PublishChannel(GetChannelId(), vhost_app_name, GetSharedPtrAs<PushStream>());
 
 		return _is_published;
-	}
-
-	bool PushStream::PublishDataChannel(const info::VHostAppName &vhost_app_name, const std::shared_ptr<PushStream> &data_channel)
-	{
-		if(_provider == nullptr)
-		{
-			return false;
-		}
-
-		return _provider->PublishDataChannel(GetChannelId(), GetRelatedChannelId(), vhost_app_name, data_channel);
 	}
 
 	CheckSignatureResult PushStream::HandleSignedPolicy(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address, std::shared_ptr<const SignedPolicy> &signed_policy)
@@ -110,12 +102,6 @@ namespace pvd
 	{
 		// Check if it is signalling channel
 		if(GetPushStreamType() == PushStreamType::SIGNALLING || GetPushStreamType() == PushStreamType::UNKNOWN)
-		{
-			return false;
-		}
-
-		// Check if it belongs application
-		if(DoesBelongApplication() == false)
 		{
 			return false;
 		}

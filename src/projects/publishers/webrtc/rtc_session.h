@@ -34,10 +34,10 @@ class WebRtcPublisher;
 class RtcApplication;
 class RtcStream;
 
-class RtcSession : public pub::Session
+class RtcSession : public pub::Session, public RtpRtcpInterface
 {
 public:
-	static std::shared_ptr<RtcSession> Create(const std::shared_ptr<WebRtcPublisher> &publihser,
+	static std::shared_ptr<RtcSession> Create(const std::shared_ptr<WebRtcPublisher> &publisher,
 											  const std::shared_ptr<pub::Application> &application,
 	                                          const std::shared_ptr<pub::Stream> &stream,
 	                                          const std::shared_ptr<const SessionDescription> &offer_sdp,
@@ -46,7 +46,7 @@ public:
 											  const std::shared_ptr<WebSocketClient> &ws_client);
 
 	RtcSession(const info::Session &session_info,
-			const std::shared_ptr<WebRtcPublisher> &publihser,
+			const std::shared_ptr<WebRtcPublisher> &publisher,
 			const std::shared_ptr<pub::Application> &application,
 	        const std::shared_ptr<pub::Stream> &stream,
 	        const std::shared_ptr<const SessionDescription> &offer_sdp,
@@ -67,7 +67,8 @@ public:
 	bool SendOutgoingData(const std::any &packet) override;
 	void OnPacketReceived(const std::shared_ptr<info::Session> &session_info, const std::shared_ptr<const ov::Data> &data) override;
 
-	void OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info);
+	void OnRtpReceived(const std::shared_ptr<RtpPacket> &rtp_packet) override;
+	void OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info) override;
 
 private:
 	bool ProcessNACK(const std::shared_ptr<RtcpInfo> &rtcp_info);
@@ -91,9 +92,11 @@ private:
 	uint8_t                             _audio_payload_type = 0;
 	uint32_t							_audio_ssrc = 0;
 
-	bool								_use_rtx_flag = false;
+	bool								_rtx_enabled = false;
 
 	uint16_t							_rtx_sequence_number = 1;
 
 	uint64_t							_session_expired_time = 0;
+
+	std::shared_mutex					_start_stop_lock;
 };

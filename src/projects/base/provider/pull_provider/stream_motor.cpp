@@ -40,6 +40,7 @@ namespace pvd
 
 		_stop_thread_flag = false;
 		_thread = std::thread(&StreamMotor::WorkerThread, this);
+		pthread_setname_np(_thread.native_handle(), "StreamMotor");
 
 		return true;
 	}
@@ -194,6 +195,7 @@ namespace pvd
 
 				if (OV_CHECK_FLAG(events, EPOLLHUP) || OV_CHECK_FLAG(events, EPOLLRDHUP))
 				{
+					logti("An error (%u) occurred while epoll_waiting the %s - %s/%s(%u) stream.", events, stream->GetApplicationTypeName(), stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
 					DelStreamFromEpoll(stream);
 					stream->Stop();
 				}
@@ -227,6 +229,7 @@ namespace pvd
 				}
 				else
 				{
+					logti("An unexpected error (%u) occurred while epoll_waiting the %s - %s/%s(%u) stream.", events, stream->GetApplicationTypeName(), stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
 					// it will be deleted from WhiteElephantCollector
 					DelStreamFromEpoll(stream);
 					stream->Stop();

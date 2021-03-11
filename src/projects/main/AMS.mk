@@ -7,12 +7,15 @@ LOCAL_STATIC_LIBRARIES := \
 	ovt_publisher \
 	file_publisher \
 	rtmppush_publisher \
+	thumbnail_publisher \
 	ovt_provider \
 	rtmp_provider \
 	mpegts_provider \
 	rtspc_provider \
+	webrtc_provider \
 	transcoder \
 	rtc_signalling \
+	address_utilities \
 	ice \
 	api_server \
 	bitstream \
@@ -21,6 +24,7 @@ LOCAL_STATIC_LIBRARIES := \
 	dtls_srtp \
 	rtp_rtcp \
 	sdp \
+	segment_writer \
 	web_console \
 	mediarouter \
 	ovt_packetizer \
