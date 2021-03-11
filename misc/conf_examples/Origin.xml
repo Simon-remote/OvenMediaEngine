@@ -91,37 +91,36 @@
 				</TLS>
 				-->
 
-				<Origins>
-					<Origin>
-						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_1}</Location> <!--/app_name/rtsp_stream_name-->
-							<Pass>
-								<Scheme>rtsp</Scheme>
-								<Urls><Url>${env:CAMERA_1_RTSP_URL}</Url></Urls>
-							</Pass>
-					</Origin>
-					<Origin>
-						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_2}</Location> <!--/app_name/rtsp_stream_name-->
-							<Pass>
-								<Scheme>rtsp</Scheme>
-								<Urls><Url>${env:CAMERA_2_RTSP_URL}</Url></Urls>
-							</Pass>
-					</Origin>
-					<Origin>
-						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_3}</Location> <!--/app_name/rtsp_stream_name-->
-							<Pass>
-								<Scheme>rtsp</Scheme>
-								<Urls><Url>${env:CAMERA_3_RTSP_URL}</Url></Urls>
-							</Pass>
-					</Origin>
-					<Origin>
-						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_4}</Location> <!--/app_name/rtsp_stream_name-->
-							<Pass>
-								<Scheme>rtsp</Scheme>
-								<Urls><Url>${env:CAMERA_4_RTSP_URL}</Url></Urls>
-							</Pass>
-					</Origin>
-				</Origins>
 			</Host>
+			<Origins>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_1}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_1_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_2}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_2_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_3}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_3_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_4}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_4_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
 
 			<!-- Settings for applications -->
 			<Applications>
