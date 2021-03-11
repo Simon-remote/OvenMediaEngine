@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 
 <Server version="8">
-	<Name>Simon_OME</Name>
+	<Name>OvenMediaEngine</Name>
 	<!-- Host type (origin/edge) -->
 	<Type>origin</Type>
 	<!-- Specify IP address to bind (* means all IPs) -->
 	<IP>*</IP>
-	
-	<!-- 
-	To get the public IP address(mapped address of stun) of the local server. 
-	This is useful when OME cannot obtain a public IP from an interface, such as AWS or docker environment. 
+
+	<!--
+	To get the public IP address(mapped address of stun) of the local server.
+	This is useful when OME cannot obtain a public IP from an interface, such as AWS or docker environment.
 	If this is successful, you can use ${PublicIP} in your settings.
 	-->
 	<StunServer>stun.l.google.com:19302</StunServer>
@@ -20,9 +20,6 @@
 			<RTMP>
 				<Port>${env:OME_RTMP_PROV_PORT:1935}</Port>
 			</RTMP>
-			<RTSP>
-				<Port>${env:OME_RTSP_PULL_PORT:554}</Port>  <!--added by RTU -->
-			</RTSP>
 			<MPEGTS>
 				<!--
 					Listen on port 4000,4001,4004,4005
@@ -54,9 +51,9 @@
 					<!-- <TLSPort>3334</TLSPort> -->
 				</Signalling>
 				<IceCandidates>
-					<!-- 
+					<!--
 						If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
+						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
 						For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/v/0.11.1/streaming/webrtc-publishing#webrtc-over-tcp
 					-->
 					<TcpRelay>${env:OME_TCP_RELAY_ADDRESS:*:3478}</TcpRelay>
@@ -94,45 +91,42 @@
 				</TLS>
 				-->
 
-			</Domain>
-			<Origins>
-				<Origin>
-					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_1}</Location> <!--/app_name/rtsp_stream_name-->
-					  <Pass>
-							<Scheme>rtsp</Scheme>
-							<Urls><Url>${env:CAMERA_1_RTSP_URL}</Url></Urls>
-						</Pass>
-				</Origin>
-				<Origin>
-					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_2}</Location> <!--/app_name/rtsp_stream_name-->
-						<Pass>
-							<Scheme>rtsp</Scheme>
-							<Urls><Url>${env:CAMERA_2_RTSP_URL}</Url></Urls>
-						</Pass>
-				</Origin>
-				<Origin>
-					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_3}</Location> <!--/app_name/rtsp_stream_name-->
-						<Pass>
-							<Scheme>rtsp</Scheme>
-							<Urls><Url>${env:CAMERA_3_RTSP_URL}</Url></Urls>
-						</Pass>
-				</Origin>
-				<Origin>
-					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_4}</Location> <!--/app_name/rtsp_stream_name-->
-						<Pass>
-							<Scheme>rtsp</Scheme>
-							<Urls><Url>${env:CAMERA_4_RTSP_URL}</Url></Urls>
-						</Pass>
-				</Origin>
-			</Origins>
-
+				<Origins>
+					<Origin>
+						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_1}</Location> <!--/app_name/rtsp_stream_name-->
+							<Pass>
+								<Scheme>rtsp</Scheme>
+								<Urls><Url>${env:CAMERA_1_RTSP_URL}</Url></Urls>
+							</Pass>
+					</Origin>
+					<Origin>
+						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_2}</Location> <!--/app_name/rtsp_stream_name-->
+							<Pass>
+								<Scheme>rtsp</Scheme>
+								<Urls><Url>${env:CAMERA_2_RTSP_URL}</Url></Urls>
+							</Pass>
+					</Origin>
+					<Origin>
+						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_3}</Location> <!--/app_name/rtsp_stream_name-->
+							<Pass>
+								<Scheme>rtsp</Scheme>
+								<Urls><Url>${env:CAMERA_3_RTSP_URL}</Url></Urls>
+							</Pass>
+					</Origin>
+					<Origin>
+						<Location>/${env:APPLICATION_NAME}/${env:CAMERA_4}</Location> <!--/app_name/rtsp_stream_name-->
+							<Pass>
+								<Scheme>rtsp</Scheme>
+								<Urls><Url>${env:CAMERA_4_RTSP_URL}</Url></Urls>
+							</Pass>
+					</Origin>
+				</Origins>
 			</Host>
-
 
 			<!-- Settings for applications -->
 			<Applications>
 				<Application>
-					<Name>${env:APPLICATION_NAME}</Name>
+					<Name>app</Name>
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
 					<OutputProfiles>
