@@ -36,8 +36,8 @@
 			<WebRTC>
 				<Signalling>
 					<Port>${env:OME_SIGNALLING_PORT:3334}</Port>
-					<!-- If you want to use TLS, specify the TLS port -->
-					<TLSPort>5556</TLSPort>
+					<!-- If you want to use TLS, specify the TLS port
+					<TLSPort>5556</TLSPort>-->
 				</Signalling>
 				<IceCandidates>
 					<!--
@@ -104,13 +104,6 @@
 -->
 
 
-			<SignedURL>
-                <CryptoKey>${env:SIGNED_URL_CRYPTO_KEY:}</CryptoKey>
-                <QueryStringKey>${env:SIGNED_URL_QUERY_KEY:authtoken}</QueryStringKey>
-            </SignedURL>
-
-				-->
-			</Host>
 
 			<!-- Refer https://airensoft.gitbook.io/ovenmediaengine/signedpolicy
 
