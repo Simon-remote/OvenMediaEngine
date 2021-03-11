@@ -36,8 +36,8 @@
 			<WebRTC>
 				<Signalling>
 					<Port>${env:OME_SIGNALLING_PORT:3334}</Port>
-					<!-- If you want to use TLS, specify the TLS port
-					<TLSPort>5556</TLSPort>-->
+					<!-- If you want to use TLS, specify the TLS port-->
+					<TLSPort>5556</TLSPort>
 				</Signalling>
 				<IceCandidates>
 					<!--
