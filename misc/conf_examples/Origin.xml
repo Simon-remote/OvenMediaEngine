@@ -20,6 +20,8 @@
 			<RTMP>
 				<Port>${env:OME_RTMP_PROV_PORT:1935}</Port>
 			</RTMP>
+			<RTSP>
+				<Port>${env:OMERTSP_PULL_PORT:554}</Port>  <!-- added by RTU -->
 			<MPEGTS>
 				<!--
 					Listen on port 4000,4001,4004,4005
@@ -124,7 +126,7 @@
 			<!-- Settings for applications -->
 			<Applications>
 				<Application>
-					<Name>app</Name>
+					<Name>${env:APPLICATION_NAME}</Name>
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
 					<OutputProfiles>
