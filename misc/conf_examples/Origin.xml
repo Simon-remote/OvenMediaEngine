@@ -22,6 +22,7 @@
 			</RTMP>
 			<RTSP>
 				<Port>${env:OMERTSP_PULL_PORT:554}</Port>  <!-- added by RTU -->
+			</RTSP>
 			<MPEGTS>
 				<!--
 					Listen on port 4000,4001,4004,4005
