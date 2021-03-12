@@ -157,7 +157,7 @@
 				  <Pass>
 				    <Scheme>ovt</Scheme>
 				    <Urls>
-				      <Url>172.26.5.170:9000/volans/</Url>
+				      <Url>172.26.224.226:9000/volans/</Url>
 				    </Urls>
 				  </Pass>
 				</Origin>
