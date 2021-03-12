@@ -65,10 +65,9 @@
 			<!-- Settings for multi domain and TLS -->
 			<Host>
 				<Names>
-					  Host names
-						<Name>streams.clientrep.nl</Name>
+					  <Name>streams.clientrep.nl</Name>
 						<Name>172.26.96.18</Name>
-									
+
 					<!--	<Name>*</Name>-->
 				</Names>
 	<!--
