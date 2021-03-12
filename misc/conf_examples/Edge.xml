@@ -45,7 +45,7 @@
 						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
 						For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/v/0.11.1/streaming/webrtc-publishing#webrtc-over-tcp
 					-->
-					<TcpRelay>${env:OME_TCP_RELAY_ADDRESS:*:3478}</TcpRelay>
+						<!--<TcpRelay>${env:OME_TCP_RELAY_ADDRESS:*:3478}</TcpRelay>-->
 					<IceCandidate>${env:OME_ICE_CANDIDATES:*:10000-10005/udp}</IceCandidate>
 				</IceCandidates>
 			</WebRTC>
@@ -65,13 +65,11 @@
 			<!-- Settings for multi domain and TLS -->
 			<Host>
 				<Names>
-						<!-- Host names
-						<Name>stream1.airensoft.com</Name>
-						<Name>stream2.airensoft.com</Name>
-						<Name>*.sub.airensoft.com</Name>
-						<Name>192.168.0.1</Name>
-					-->
-					<Name>*</Name>
+					  Host names
+						<Name>streams.clientrep.nl</Name>
+						<Name>172.26.96.18</Name>
+									
+					<!--	<Name>*</Name>-->
 				</Names>
 	<!--
 	<TLS>
