@@ -18,6 +18,21 @@
 #include "dash_define.h"
 #include "dash_private.h"
 
+static inline void DumpSegmentToFile(const std::shared_ptr<const SegmentItem> &segment_item)
+{
+#if DEBUG
+	static bool dump = ov::Converter::ToBool(std::getenv("OME_DUMP_DASH"));
+
+	if (dump)
+	{
+		auto &file_name = segment_item->file_name;
+		auto &data = segment_item->data;
+
+		ov::DumpToFile(ov::PathManager::Combine(ov::PathManager::GetAppPath("dump/dash"), file_name), data);
+	}
+#endif	// DEBUG
+}
+
 DashPacketizer::DashPacketizer(const ov::String &app_name, const ov::String &stream_name,
 							   uint32_t segment_count, uint32_t segment_duration,
 							   std::shared_ptr<MediaTrack> video_track, std::shared_ptr<MediaTrack> audio_track,
@@ -177,18 +192,6 @@ ov::String DashPacketizer::GetFileName(int segment_index, cmn::MediaType media_t
 	return "";
 }
 
-static inline void DumpSegmentToFile(const std::shared_ptr<const SegmentItem> &segment_item)
-{
-#if DEBUG
-#	if 0
-	auto &file_name = segment_item->file_name;
-	auto &data = segment_item->data;
-
-	ov::DumpToFile(ov::PathManager::Combine(ov::PathManager::GetAppPath("dump/dash"), file_name), data);
-#	endif
-#endif	// DEBUG
-}
-
 bool DashPacketizer::PrepareVideoInitIfNeeded()
 {
 	if (_video_init_file != nullptr)
@@ -275,6 +278,11 @@ bool DashPacketizer::WriteVideoSegment()
 	auto duration = _video_m4s_writer.GetDuration();
 	auto pts = std::move(_first_video_pts);
 
+	if (_video_start_time == -1L)
+	{
+		_video_start_time = GetCurrentMilliseconds() - (duration * _video_timebase_expr_ms);
+	}
+
 	if (SetSegmentData(_video_m4s_writer, pts))
 	{
 		_duration_delta_for_video += (_ideal_duration_for_video - duration);
@@ -302,6 +310,11 @@ bool DashPacketizer::WriteAudioSegment()
 
 	auto duration = _audio_m4s_writer.GetDuration();
 	auto pts = std::move(_first_audio_pts);
+
+	if (_audio_start_time == -1L)
+	{
+		_audio_start_time = GetCurrentMilliseconds() - (duration * _audio_timebase_expr_ms);
+	}
 
 	if (SetSegmentData(_audio_m4s_writer, pts))
 	{
@@ -545,20 +558,26 @@ bool DashPacketizer::UpdatePlayList()
 		{
 			xml
 				// <AdaptationSet>
-				<< R"(		<AdaptationSet mimeType="video/mp4" contentType="video" )"
-				<< R"(segmentAlignment="true" startWithSAP="1" )"
+				<< R"(		<AdaptationSet )"
+				<< R"(mimeType="video/mp4" )"
+				<< R"(contentType="video" )"
+				<< R"(segmentAlignment="true" )"
+				<< R"(startWithSAP="1" )"
 				<< R"(par=")" << _pixel_aspect_ratio << R"(">)" << std::endl;
 
 			{
 				xml
 					// <Role />
-					<< R"(			<Role schemeIdUri="urn:mpeg:dash:role:2011" value="main" />)" << std::endl;
+					<< R"(			<Role )"
+					<< R"(schemeIdUri="urn:mpeg:dash:role:2011" )"
+					<< R"(value="main" />)" << std::endl;
 			}
 
 			{
 				xml
 					// <SegmentTemplate />
-					<< R"(			<SegmentTemplate startNumber="0" )"
+					<< R"(			<SegmentTemplate )"
+					<< R"(startNumber="0" )"
 					<< R"(timescale=")" << static_cast<int64_t>(_video_timescale) << R"(" )"
 					<< R"(duration=")" << static_cast<int64_t>(_segment_duration * _video_timescale) << R"(" )"
 					<< R"(initialization=")" << DASH_MPD_VIDEO_INIT_FILE_NAME << R"(" )"
@@ -569,8 +588,9 @@ bool DashPacketizer::UpdatePlayList()
 				xml
 					// <Representation />
 					<< R"(			<Representation )"
+					<< R"(mimeType="video/mp4" )"
 					<< R"(id="video)" << _video_track->GetId() << R"(" )"
-					<< R"(codecs="avc1.64001e" )"
+					<< R"(codecs=")" << GetCodecString(_video_track).CStr() << R"(" )"
 					<< R"(bandwidth=")" << _video_track->GetBitrate() << R"(" )"
 					<< R"(width=")" << _video_track->GetWidth() << R"(" )"
 					<< R"(height=")" << _video_track->GetHeight() << R"(" )"
@@ -586,20 +606,27 @@ bool DashPacketizer::UpdatePlayList()
 		{
 			xml
 				// <AdaptationSet>
-				<< R"(		<AdaptationSet mimeType="audio/mp4" lang="und" contentType="audio" )"
-				<< R"(subsegmentAlignment="true" subsegmentStartsWithSAP="1" )"
+				<< R"(		<AdaptationSet )"
+				<< R"(mimeType="audio/mp4" )"
+				<< R"(lang="und" )"
+				<< R"(contentType="audio" )"
+				<< R"(subsegmentAlignment="true" )"
+				<< R"(subsegmentStartsWithSAP="1" )"
 				<< R"(par=")" << _pixel_aspect_ratio << R"(">)" << std::endl;
 
 			{
 				xml
 					// <Role />
-					<< R"(			<Role schemeIdUri="urn:mpeg:dash:role:2011" value="main" />)" << std::endl;
+					<< R"(			<Role )"
+					<< R"(schemeIdUri="urn:mpeg:dash:role:2011" )"
+					<< R"(value="main" />)" << std::endl;
 			}
 
 			{
 				xml
 					// <SegmentTemplate />
-					<< R"(			<SegmentTemplate startNumber="0" )"
+					<< R"(			<SegmentTemplate )"
+					<< R"(startNumber="0" )"
 					<< R"(timescale=")" << static_cast<int64_t>(_audio_timescale) << R"(" )"
 					<< R"(duration=")" << static_cast<int64_t>(_segment_duration * _audio_timescale) << R"(" )"
 					<< R"(initialization=")" << DASH_MPD_AUDIO_INIT_FILE_NAME << R"(" )"
@@ -611,15 +638,16 @@ bool DashPacketizer::UpdatePlayList()
 					// <Representation>
 					<< R"(			<Representation )"
 					<< R"(id="audio)" << _audio_track->GetId() << R"(" )"
-					<< R"(codecs="mp4a.40.2")"
+					<< R"(codecs=")" << GetCodecString(_audio_track).CStr() << R"(" )"
 					<< R"(bandwidth=")" << _audio_track->GetBitrate() << R"(" )"
-					<< R"(audioSamplingRate=")" << _audio_track->GetSampleRate() << R"(" )" << std::endl;
+					<< R"(audioSamplingRate=")" << _audio_track->GetSampleRate() << R"(">)" << std::endl;
 
 				{
 					xml
 						// <AudioChannelConfiguration />
-						<< R"(				<AudioChannelConfiguration schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" )"
-						<< R"(value="2" />)" << std::endl;
+						<< R"(				<AudioChannelConfiguration )"
+						<< R"(schemeIdUri="urn:mpeg:dash:23003:3:audio_channel_configuration:2011" )"
+						<< R"(value=")" << _audio_track->GetChannel().GetCounts() << R"(" />)" << std::endl;
 				}
 
 				xml
@@ -849,7 +877,17 @@ bool DashPacketizer::SetSegmentData(Writer &writer, int64_t timestamp)
 
 void DashPacketizer::SetReadyForStreaming() noexcept
 {
-	_start_time_ms = std::max(_video_start_time, _audio_start_time);
+	if ((_video_start_time == -1L) || (_audio_start_time == -1L))
+	{
+		// Choose one of the two
+		_start_time_ms = std::max(_video_start_time, _audio_start_time);
+	}
+	else
+	{
+		// Choose the time that came out faster between the two
+		_start_time_ms = std::min(_video_start_time, _audio_start_time);
+	}
+
 	_start_time = MakeUtcMillisecond(_start_time_ms);
 
 	Packetizer::SetReadyForStreaming();

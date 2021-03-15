@@ -123,6 +123,13 @@ namespace pvd
 			}
 		}
 
+		_certificate = CreateCertificate();
+		if(_certificate == nullptr)
+		{
+			logte("Could not create certificate.");
+			result = false;
+		}
+
 		if (result)
 		{
 			logti("%s is listening on %s%s%s%s...",
@@ -158,7 +165,7 @@ namespace pvd
 
 	std::shared_ptr<pvd::Application> WebRTCProvider::OnCreateProviderApplication(const info::Application &application_info)
 	{
-		return WebRTCApplication::Create(PushProvider::GetSharedPtrAs<PushProvider>(), application_info, _ice_port, _signalling_server);
+		return WebRTCApplication::Create(PushProvider::GetSharedPtrAs<PushProvider>(), application_info, _certificate, _ice_port, _signalling_server);
 	}
 
 	bool WebRTCProvider::OnDeleteProviderApplication(const std::shared_ptr<pvd::Application> &application)
@@ -175,6 +182,15 @@ namespace pvd
 													std::vector<RtcIceCandidate> *ice_candidates, bool &tcp_relay)
 	{
 		logtd("WebRTCProvider::OnAddRemoteDescription");
+		auto request = ws_client->GetClient()->GetRequest();
+		auto remote_address = request->GetRemote()->GetRemoteAddress();
+		auto uri = request->GetUri();
+		auto parsed_url = ov::Url::Parse(uri);
+		if (parsed_url == nullptr)
+		{
+			logte("Could not parse the url: %s", uri.CStr());
+			return nullptr;
+		}
 
 		// TODO(Getroot): Implement SingedPolicy
 			
@@ -195,6 +211,12 @@ namespace pvd
 			return nullptr;
 		}
 
+		auto transport = parsed_url->GetQueryValue("transport");
+		if(transport.UpperCaseString() == "TCP")
+		{
+			tcp_relay = true;
+		}
+
 		auto &candidates = IcePortManager::GetInstance()->GetIceCandidateList(IcePortObserver::GetSharedPtr());
 		ice_candidates->insert(ice_candidates->end(), candidates.cbegin(), candidates.cend());
 		auto session_description = std::make_shared<SessionDescription>(*application->GetOfferSDP());
@@ -202,7 +224,7 @@ namespace pvd
 		session_description->SetIceUfrag(_ice_port->GenerateUfrag());
 		session_description->Update();
 
-		return application->GetOfferSDP();
+		return session_description;
 	}
 
 	bool WebRTCProvider::OnAddRemoteDescription(const std::shared_ptr<WebSocketClient> &ws_client,
@@ -233,7 +255,7 @@ namespace pvd
 
 		// Create Stream
 		auto channel_id = offer_sdp->GetSessionId();
-		auto stream = WebRTCStream::Create(StreamSourceType::WebRTC, channel_id, PushProvider::GetSharedPtrAs<PushProvider>(), offer_sdp, peer_sdp, _ice_port);
+		auto stream = WebRTCStream::Create(StreamSourceType::WebRTC, stream_name, channel_id, PushProvider::GetSharedPtrAs<PushProvider>(), offer_sdp, peer_sdp, _certificate, _ice_port);
 		if(stream == nullptr)
 		{
 			logte("Could not create %s stream in %s application", stream_name.CStr(), vhost_app_name.CStr());
@@ -278,6 +300,8 @@ namespace pvd
 			logte("To stop stream failed. Cannot find stream (%s/%s)", vhost_app_name.CStr(), stream_name.CStr());
 			return false;
 		}
+
+		_ice_port->RemoveSession(stream->GetId());
 
 		return OnChannelDeleted(stream);
 	}
@@ -342,5 +366,24 @@ namespace pvd
 		}
 
 		PushProvider::OnDataReceived(stream->GetId(), data);
+	}
+
+	std::shared_ptr<Certificate> WebRTCProvider::CreateCertificate()
+	{
+		auto certificate = std::make_shared<Certificate>();
+
+		auto error = certificate->Generate();
+		if(error != nullptr)
+		{
+			logte("Cannot create certificate: %s", error->ToString().CStr());
+			return nullptr;
+		}
+
+		return certificate;
+	}
+
+	std::shared_ptr<Certificate> WebRTCProvider::GetCertificate()
+	{
+		return _certificate;
 	}
 }

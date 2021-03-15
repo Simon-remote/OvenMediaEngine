@@ -70,6 +70,18 @@ bool RtpRtcp::SendOutgoingData(const std::shared_ptr<RtpPacket> &rtp_packet)
 
 bool RtpRtcp::SendData(NodeType from_node, const std::shared_ptr<ov::Data> &data)
 {
+	auto node = GetLowerNode();
+	if(!node)
+	{
+		return false;
+	}
+
+	if(!node->SendData(from_node, data))
+	{
+		loge("RtpRtcp","Send data failed from(%d) data_len(%d)", static_cast<uint16_t>(from_node), data->GetLength());
+		return false;
+	}
+
 	return true;
 }
 
@@ -85,6 +97,69 @@ bool RtpRtcp::OnDataReceived(NodeType from_node, const std::shared_ptr<const ov:
 		return false;
 	}
 
+	if(from_node == NodeType::Srtcp)
+	{
+		return OnRtcpReceived(data);
+	}
+	else if(from_node == NodeType::Srtp)
+	{
+		return OnRtpReceived(data);
+	}
+
+    return true;
+}
+
+bool RtpRtcp::OnRtpReceived(const std::shared_ptr<const ov::Data> &data)
+{
+	auto packet = std::make_shared<RtpPacket>(data);
+	logtd("%s", packet->Dump().CStr());
+
+	auto jitter_buffer = GetJitterBuffer(packet->PayloadType());
+	if(jitter_buffer == nullptr)
+	{
+		// can not happen
+		logte("Could not find jitter buffer for payload type %d", packet->PayloadType());
+		return false;
+	}
+
+	jitter_buffer->InsertPacket(packet);
+
+	auto frame = jitter_buffer->PopAvailableFrame();
+	if(frame != nullptr && _observer != nullptr)
+	{
+		std::shared_lock<std::shared_mutex> lock(_observer_lock);
+		std::vector<std::shared_ptr<RtpPacket>> rtp_packets;
+
+		auto packet = frame->GetFirstRtpPacket();
+		if(packet == nullptr)
+		{
+			// can not happen
+			logte("Could not get first rtp packet from jitter buffer - payload type : %d", packet->PayloadType());
+			return false;
+		}
+		
+		rtp_packets.push_back(packet);
+
+		while(true)
+		{
+			packet = frame->GetNextRtpPacket();
+			if(packet == nullptr)
+			{
+				break;
+			}
+
+			rtp_packets.push_back(packet);
+		}
+
+		_observer->OnRtpFrameReceived(rtp_packets);
+	}
+
+	return true;
+}
+
+bool RtpRtcp::OnRtcpReceived(const std::shared_ptr<const ov::Data> &data)
+{
+	logtd("Get RTCP Packet - length(%d)", data->GetLength());
 	// Parse RTCP Packet
 	RtcpReceiver receiver;
 	if(receiver.ParseCompoundPacket(data) == false)
@@ -102,6 +177,20 @@ bool RtpRtcp::OnDataReceived(NodeType from_node, const std::shared_ptr<const ov:
 			_observer->OnRtcpReceived(info);
 		}
 	}
+	return true;
+}
 
-    return true;
+std::shared_ptr<RtpJitterBuffer> RtpRtcp::GetJitterBuffer(uint8_t payload_type)
+{
+	auto it = _rtp_jitter_buffers.find(payload_type);
+	if(it == _rtp_jitter_buffers.end())
+	{
+		logti("Create jitter buffer for payload type %d", payload_type);
+		// Create new jitter buffer
+		auto jitter_buffer = std::make_shared<RtpJitterBuffer>();
+		_rtp_jitter_buffers[payload_type] = jitter_buffer;
+		return jitter_buffer;
+	}
+
+	return it->second;
 }
