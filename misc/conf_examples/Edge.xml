@@ -149,7 +149,6 @@
 				  </Pass>
 				</Origin>
 				<Origin>
-				  <Location>/volans</Location>
 				  <Location>/volans/</Location>
 				  <Pass>
 				    <Scheme>ovt</Scheme>
