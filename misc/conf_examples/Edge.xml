@@ -65,18 +65,17 @@
 			<!-- Settings for multi domain and TLS -->
 			<Host>
 				<Names>
-	<!--					  <Name>streams.clientrep.nl</Name>
-						<Name>172.26.96.18</Name>-->
+					  <Name>streams.clientrep.nl</Name>
 
-					<Name>*</Name>
+				<!--	<Name>*</Name>-->
 				</Names>
-	<!--
+
 	<TLS>
-		<CertPath>path/to/file.crt</CertPath>
-		<KeyPath>path/to/file.key</KeyPath>
-		<ChainCertPath>path/to/file.crt</ChainCertPath>
+		<CertPath>/opt/ovenmediaengine/bin/certs/cert.crt</CertPath>
+		<KeyPath>/opt/ovenmediaengine/bin/certs/privkey.key</KeyPath>
+		<ChainCertPath>/opt/ovenmediaengine/bin/certs/fullchain.crt</ChainCertPath>
 	</TLS>
-	-->
+
 			</Host>
 <!--			<Domain>
 				<Names>
