@@ -139,11 +139,20 @@
 				</Origin>
 				-->
 				<Origin>
-				  <Location>/deep/</Location>
+				  <Location>/marker/</Location>
 				  <Pass>
 				    <Scheme>ovt</Scheme>
 				    <Urls>
-				      <Url>172.26.103.48:9000/deep/</Url>
+				      <Url>172.26.201.98:9000/deep/</Url>
+				    </Urls>
+				  </Pass>
+				</Origin>
+				<Origin>
+				  <Location>/wind/</Location>
+				  <Pass>
+				    <Scheme>ovt</Scheme>
+				    <Urls>
+				      <Url>172.26.148.247:9000/deep/</Url>
 				    </Urls>
 				  </Pass>
 				</Origin>
