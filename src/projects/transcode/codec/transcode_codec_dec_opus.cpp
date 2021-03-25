@@ -6,12 +6,12 @@
 //  Copyright (c) 2018 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#include "transcode_codec_dec_aac.h"
+#include "transcode_codec_dec_opus.h"
 
 #include "../transcode_private.h"
 #include "base/info/application.h"
 
-void OvenCodecImplAvcodecDecAAC::ThreadDecode()
+void OvenCodecImplAvcodecDecOPUS::ThreadDecode()
 {
 	bool no_data_to_encode = false;
 
@@ -218,7 +218,7 @@ void OvenCodecImplAvcodecDecAAC::ThreadDecode()
 	}
 }
 
-std::shared_ptr<MediaFrame> OvenCodecImplAvcodecDecAAC::RecvBuffer(TranscodeResult *result)
+std::shared_ptr<MediaFrame> OvenCodecImplAvcodecDecOPUS::RecvBuffer(TranscodeResult *result)
 {
 	if (!_output_buffer.IsEmpty())
 	{

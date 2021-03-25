@@ -267,7 +267,14 @@ bool IcePort::RemoveSession(uint32_t session_id)
 		auto item = _session_table.find(session_id);
 		if (item == _session_table.end())
 		{
-			logtw("Could not find session: %d", session_id);
+			/*
+			The case of reaching here is as follows.
+
+			1. Already the session was deleted but WebRTC Signalling server try to delete the session again
+			2. IcePort sent Stun request but player didn't response stun bind response
+
+			*/
+			logtd("Could not find session: %d", session_id);
 
 			{
 				// If it exists only in _user_mapping_table, find it and remove it.
@@ -281,7 +288,19 @@ bool IcePort::RemoveSession(uint32_t session_id)
 					if (ice_port_info->session_id == session_id)
 					{
 						_user_mapping_table.erase(it++);
-						logtw("This is because the stun request was not received from this session.");
+						logtd("This is because the stun request was not received from this session.");
+
+						// Close only TCP (TURN)
+						auto remote = ice_port_info->remote;
+
+						if (remote != nullptr)
+						{
+							if (remote->GetSocket().GetType() == ov::SocketType::Tcp)
+							{
+								remote->CloseIfNeeded();
+							}
+						}
+
 						return true;
 					}
 					else
@@ -298,6 +317,12 @@ bool IcePort::RemoveSession(uint32_t session_id)
 
 		_session_table.erase(item);
 		_ice_port_info.erase(ice_port_info->address);
+
+		// Close only TCP (TURN)
+		if(ice_port_info->remote->GetSocket().GetType() == ov::SocketType::Tcp)
+		{
+			ice_port_info->remote->CloseIfNeeded();
+		}
 	}
 
 	{
@@ -318,11 +343,7 @@ void IcePort::CheckTimedoutItem()
 		{
 			if (item->second->IsExpired())
 			{
-				logtd("Client %s(session id: %d) is expired", item->second->address.ToString().CStr(), item->second->session_id);
-				SetIceState(item->second, IcePortConnectionState::Disconnected);
-
 				delete_list.push_back(item->second);
-
 				item = _user_mapping_table.erase(item);
 			}
 			else
@@ -340,6 +361,20 @@ void IcePort::CheckTimedoutItem()
 			_session_table.erase(deleted_ice_port->session_id);
 			_ice_port_info.erase(deleted_ice_port->address);
 		}
+	}
+
+	// Notify to observer
+	for (auto &deleted_ice_port : delete_list)
+	{
+		logtw("Client %s(session id: %d) has expired", deleted_ice_port->address.ToString().CStr(), deleted_ice_port->session_id);
+
+		// Close only TCP (TURN)
+		if(deleted_ice_port->remote != nullptr && deleted_ice_port->remote->GetSocket().GetType() == ov::SocketType::Tcp)
+		{
+			deleted_ice_port->remote->CloseIfNeeded();
+		}
+
+		SetIceState(deleted_ice_port, IcePortConnectionState::Disconnected);
 	}
 }
 
@@ -362,7 +397,7 @@ bool IcePort::Send(uint32_t session_id, const std::shared_ptr<const ov::Data> &d
 		auto item = _session_table.find(session_id);
 		if (item == _session_table.end())
 		{
-			logtw("ClientSocket not found for session #%d", session_id);
+			logtd("ClientSocket not found for session #%d", session_id);
 			return false;
 		}
 
@@ -1041,19 +1076,14 @@ bool IcePort::ProcessTurnRefreshRequest(const std::shared_ptr<ov::Socket> &remot
 {
 	StunMessage response_message;
 
-	auto requested_lifetime_attr = message.GetAttribute<StunLifetimeAttribute>(StunAttributeType::Lifetime);
-	if(requested_lifetime_attr == nullptr)
-	{
-		response_message.SetHeader(StunClass::ErrorResponse, StunMethod::Refresh, message.GetTransactionId());
-		response_message.SetErrorCodeAttribute(StunErrorCode::BadRequest);
-		SendStunMessage(remote, address, gate_info, response_message, _hmac_key->ToString());
-		return false;
-	}
-
 	// Add lifetime
 	uint32_t lifetime = DEFAULT_LIFETIME;
 
-	lifetime = std::min(static_cast<uint32_t>(DEFAULT_LIFETIME), requested_lifetime_attr->GetValue());
+	auto requested_lifetime_attr = message.GetAttribute<StunLifetimeAttribute>(StunAttributeType::Lifetime);
+	if(requested_lifetime_attr != nullptr)
+	{
+		lifetime = std::min(static_cast<uint32_t>(DEFAULT_LIFETIME), requested_lifetime_attr->GetValue());
+	}
 
 	auto lifetime_attribute = std::make_shared<StunLifetimeAttribute>();
 	lifetime_attribute->SetValue(lifetime);
@@ -1062,6 +1092,8 @@ bool IcePort::ProcessTurnRefreshRequest(const std::shared_ptr<ov::Socket> &remot
 	response_message.SetHeader(StunClass::SuccessResponse, StunMethod::Refresh, message.GetTransactionId());
 	response_message.AddAttribute(lifetime_attribute);
 	SendStunMessage(remote, address, gate_info, response_message, _hmac_key->ToString());
+
+	logtd("Turn Refresh Request : %s", lifetime_attribute->ToString().CStr());	
 
 	return true;
 }

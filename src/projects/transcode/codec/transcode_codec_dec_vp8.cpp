@@ -6,12 +6,12 @@
 //  Copyright (c) 2018 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#include "transcode_codec_dec_hevc.h"
+#include "transcode_codec_dec_vp8.h"
 
 #include "../transcode_private.h"
 #include "base/info/application.h"
 
-void OvenCodecImplAvcodecDecHEVC::ThreadDecode()
+void OvenCodecImplAvcodecDecVP8::ThreadDecode()
 {
 	while (!_kill_flag)
 	{
@@ -185,7 +185,7 @@ void OvenCodecImplAvcodecDecHEVC::ThreadDecode()
 	}
 }
 
-std::shared_ptr<MediaFrame> OvenCodecImplAvcodecDecHEVC::RecvBuffer(TranscodeResult *result)
+std::shared_ptr<MediaFrame> OvenCodecImplAvcodecDecVP8::RecvBuffer(TranscodeResult *result)
 {
 	if (!_output_buffer.IsEmpty())
 	{
