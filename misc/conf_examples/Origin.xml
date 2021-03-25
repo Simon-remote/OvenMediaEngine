@@ -123,6 +123,19 @@
 							<Urls><Url>${env:CAMERA_4_RTSP_URL}</Url></Urls>
 						</Pass>
 				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_5}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+							<Urls><Url>${env:CAMERA_5_RTSP_URL}</Url></Urls>
+						</Pass>
+				</Origin>
+				<Origin>
+					<Location>/${env:APPLICATION_NAME}/${env:CAMERA_6}</Location> <!--/app_name/rtsp_stream_name-->
+						<Pass>
+							<Scheme>rtsp</Scheme>
+						</Pass>
+				</Origin>
       </Origins>
 			<!-- Settings for applications -->
 			<Applications>
